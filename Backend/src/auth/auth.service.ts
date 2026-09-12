@@ -1,8 +1,10 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type {
   AuthResponseDto,
   AuthTokensDto,
@@ -10,7 +12,7 @@ import type {
 } from '@telemed/service-contracts';
 import { argon2id, hash, verify } from 'argon2';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
-import type { User } from '../generated/prisma/client';
+import { Prisma, type User } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { LoginRequestDto } from './dto/login-request.dto';
 import type { LogoutRequestDto } from './dto/logout-request.dto';
@@ -23,33 +25,46 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokenService: TokenService,
+    private readonly configService: ConfigService,
   ) {}
 
   async register(dto: RegisterRequestDto): Promise<AuthResponseDto> {
+    if (dto.role === 'doctor' && !this.allowDoctorSelfRegistration()) {
+      throw new ForbiddenException({
+        errorCode: 'FORBIDDEN',
+        message: 'Doctor self-registration is disabled',
+      });
+    }
+
     const email = dto.email.trim().toLowerCase();
     const existing = await this.prisma.user.findUnique({
       where: { email },
       select: { id: true },
     });
     if (existing) {
-      throw new ConflictException({
-        errorCode: 'EMAIL_TAKEN',
-        message: 'Email already registered',
-      });
+      throw this.emailTaken();
     }
 
     const passwordHash = await hash(dto.password, { type: argon2id });
-    const user = await this.prisma.user.create({
-      data: {
-        name: dto.name.trim(),
-        email,
-        passwordHash,
-        role: dto.role,
-        specialty:
-          dto.role === 'doctor' ? (dto.specialty?.trim() ?? null) : null,
-        crm: dto.role === 'doctor' ? (dto.crm?.trim() ?? null) : null,
-      },
-    });
+    let user: User;
+    try {
+      user = await this.prisma.user.create({
+        data: {
+          name: dto.name.trim(),
+          email,
+          passwordHash,
+          role: dto.role,
+          specialty:
+            dto.role === 'doctor' ? (dto.specialty?.trim() ?? null) : null,
+          crm: dto.role === 'doctor' ? (dto.crm?.trim() ?? null) : null,
+        },
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw this.emailTaken();
+      }
+      throw error;
+    }
 
     return this.createSession(user);
   }
@@ -74,11 +89,12 @@ export class AuthService {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
     });
-    if (
-      !stored ||
-      stored.revokedAt ||
-      stored.expiresAt.getTime() <= Date.now()
-    ) {
+    if (!stored || stored.expiresAt.getTime() <= Date.now()) {
+      throw this.invalidRefreshToken();
+    }
+
+    if (stored.revokedAt) {
+      await this.revokeAllActiveTokens(stored.userId);
       throw this.invalidRefreshToken();
     }
 
@@ -89,24 +105,35 @@ export class AuthService {
       throw this.invalidRefreshToken();
     }
 
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
-      data: { revokedAt: new Date() },
+    const rotated = await this.prisma.$transaction(async (tx) => {
+      const revoked = await tx.refreshToken.updateMany({
+        where: { id: stored.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      if (revoked.count !== 1) {
+        return null;
+      }
+
+      const issued = await this.tokenService.issueTokens({
+        sub: user.id,
+        role: user.role,
+      });
+      await tx.refreshToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: issued.refreshTokenHash,
+          expiresAt: issued.refreshTokenExpiresAt,
+        },
+      });
+      return issued.tokens;
     });
 
-    const issued = await this.tokenService.issueTokens({
-      sub: user.id,
-      role: user.role,
-    });
-    await this.prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        tokenHash: issued.refreshTokenHash,
-        expiresAt: issued.refreshTokenExpiresAt,
-      },
-    });
+    if (!rotated) {
+      await this.revokeAllActiveTokens(stored.userId);
+      throw this.invalidRefreshToken();
+    }
 
-    return issued.tokens;
+    return rotated;
   }
 
   async logout(dto: LogoutRequestDto): Promise<void> {
@@ -145,6 +172,20 @@ export class AuthService {
     return { user: toUserDto(user), tokens: issued.tokens };
   }
 
+  private allowDoctorSelfRegistration(): boolean {
+    return this.configService.get<boolean>(
+      'ALLOW_DOCTOR_SELF_REGISTRATION',
+      false,
+    );
+  }
+
+  private async revokeAllActiveTokens(userId: string): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+  }
+
   private async verifyPassword(
     passwordHash: string,
     password: string,
@@ -154,6 +195,13 @@ export class AuthService {
     } catch {
       return false;
     }
+  }
+
+  private emailTaken(): ConflictException {
+    return new ConflictException({
+      errorCode: 'EMAIL_TAKEN',
+      message: 'Email already registered',
+    });
   }
 
   private invalidCredentials(): UnauthorizedException {
@@ -176,6 +224,13 @@ export class AuthService {
       message: 'Authentication required',
     });
   }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002'
+  );
 }
 
 function toUserDto(user: User): UserDto {

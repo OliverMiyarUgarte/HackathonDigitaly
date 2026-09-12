@@ -20,6 +20,7 @@ import type {
 import type { Namespace, Socket } from 'socket.io';
 import { AppointmentAccessService } from '../appointments/appointment-access.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
+import { PrismaService } from '../prisma/prisma.service';
 import type { AudioChunkFrame, AudioEndFrame } from './audio-frame-handler';
 import { RealtimeService } from './realtime.service';
 
@@ -106,11 +107,13 @@ export class RealtimeGateway
     OnGatewayDisconnect<RealtimeSocket>
 {
   private readonly logger = new Logger(RealtimeGateway.name);
+  private readonly handshakes = new WeakMap<RealtimeSocket, Promise<void>>();
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly accessService: AppointmentAccessService,
     private readonly realtimeService: RealtimeService,
+    private readonly prisma: PrismaService,
   ) {}
 
   afterInit(server: RealtimeNamespace): void {
@@ -124,17 +127,44 @@ export class RealtimeGateway
       return;
     }
 
+    const handshake = this.authenticate(client, token);
+    this.handshakes.set(client, handshake);
+    await handshake;
+  }
+
+  private async authenticate(
+    client: RealtimeSocket,
+    token: string,
+  ): Promise<void> {
     try {
       const payload: unknown = await this.jwtService.verifyAsync(token);
       if (!isAuthenticatedUser(payload)) {
         this.reject(client);
         return;
       }
-      client.data.user = { sub: payload.sub, role: payload.role };
-      await client.join(this.realtimeService.userRoom(payload.sub));
+      const user = await this.prisma.user.findFirst({
+        where: { id: payload.sub, deletedAt: null },
+        select: { id: true, role: true },
+      });
+      if (!user) {
+        this.reject(client);
+        return;
+      }
+      client.data.user = { sub: user.id, role: user.role };
+      await client.join(this.realtimeService.userRoom(user.id));
     } catch {
       this.reject(client);
     }
+  }
+
+  private async requireUser(
+    client: RealtimeSocket,
+  ): Promise<AuthenticatedUser | null> {
+    const handshake = this.handshakes.get(client);
+    if (handshake) {
+      await handshake;
+    }
+    return client.data.user ?? null;
   }
 
   handleDisconnect(client: RealtimeSocket): void {
@@ -158,7 +188,7 @@ export class RealtimeGateway
     @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() payload: unknown,
   ): Promise<void> {
-    const user = client.data.user;
+    const user = await this.requireUser(client);
     if (!user) {
       this.emitRoomError(client, 'UNAUTHENTICATED', 'Authentication required');
       return;
@@ -207,7 +237,8 @@ export class RealtimeGateway
     @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() payload: unknown,
   ): Promise<void> {
-    if (!client.data.user) {
+    const user = await this.requireUser(client);
+    if (!user) {
       this.emitRoomError(client, 'UNAUTHENTICATED', 'Authentication required');
       return;
     }

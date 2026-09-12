@@ -358,6 +358,7 @@ export class AiProxyService
         }
         settled = true;
         clearTimeout(timer);
+        socket.terminate();
         reject(new Error('AI socket error'));
       });
 

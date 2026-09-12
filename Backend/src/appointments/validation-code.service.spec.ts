@@ -11,8 +11,10 @@ import { ValidationCodeService } from './validation-code.service';
 const PEPPER = 'unit-test-pepper';
 const PATIENT: AuthenticatedUser = { sub: 'patient-1', role: 'patient' };
 
-function expectedHash(code: string): string {
-  return createHmac('sha256', PEPPER).update(code).digest('hex');
+function expectedHash(appointmentId: string, code: string): string {
+  return createHmac('sha256', PEPPER)
+    .update(`${appointmentId}:${code}`)
+    .digest('hex');
 }
 
 interface ValidationCodeDelegateMock {
@@ -20,6 +22,10 @@ interface ValidationCodeDelegateMock {
   create: jest.Mock<Promise<ValidationCode>, [ValidationCodeCreateCall]>;
   update: jest.Mock<Promise<ValidationCode>, [unknown]>;
   updateMany: jest.Mock<Promise<{ count: number }>, [unknown]>;
+  aggregate: jest.Mock<
+    Promise<{ _sum: { attempts: number | null } }>,
+    [unknown]
+  >;
 }
 
 interface AppointmentDelegateMock {
@@ -83,6 +89,10 @@ function createPrismaMock(): PrismaMock {
       create: jest.fn<Promise<ValidationCode>, [ValidationCodeCreateCall]>(),
       update: jest.fn<Promise<ValidationCode>, [unknown]>(),
       updateMany: jest.fn<Promise<{ count: number }>, [unknown]>(),
+      aggregate: jest.fn<
+        Promise<{ _sum: { attempts: number | null } }>,
+        [unknown]
+      >(),
     },
     appointment: {
       findUnique: jest.fn<Promise<Appointment | null>, [unknown]>(),
@@ -142,7 +152,7 @@ function buildValidationCode(
   return {
     id: 'code-1',
     appointmentId: 'appointment-1',
-    codeHash: expectedHash('123456'),
+    codeHash: expectedHash('appointment-1', '123456'),
     expiresAt: new Date(Date.now() + 600_000),
     consumedAt: null,
     attempts: 0,
@@ -224,7 +234,16 @@ describe('ValidationCodeService', () => {
       const createCall = prisma.validationCode.create.mock.calls[0][0];
       expect(createCall.data.attempts).toBe(0);
       expect(createCall.data.codeHash).not.toBe(sentCode);
-      expect(createCall.data.codeHash).toBe(expectedHash(sentCode));
+      expect(createCall.data.codeHash).toBe(
+        expectedHash('appointment-1', sentCode),
+      );
+    });
+
+    it('binds the hash to the appointment id', () => {
+      const sameCode = '123456';
+      expect(expectedHash('appointment-1', sameCode)).not.toBe(
+        expectedHash('appointment-2', sameCode),
+      );
     });
 
     it('rejects a non pending_code appointment with 409 CONFLICT', async () => {
@@ -266,8 +285,11 @@ describe('ValidationCodeService', () => {
       const code = await issueCode();
       access.assertAppointmentAccess.mockResolvedValue(buildAppointment());
       prisma.validationCode.findFirst.mockResolvedValue(
-        buildValidationCode({ codeHash: expectedHash(code) }),
+        buildValidationCode({ codeHash: expectedHash('appointment-1', code) }),
       );
+      prisma.validationCode.aggregate.mockResolvedValue({
+        _sum: { attempts: 0 },
+      });
       prisma.validationCode.updateMany.mockResolvedValue({ count: 1 });
       prisma.appointment.updateMany.mockResolvedValue({ count: 1 });
       prisma.auditLog.create.mockResolvedValue({ id: 'audit-1' });
@@ -302,8 +324,13 @@ describe('ValidationCodeService', () => {
     it('rejects a wrong code, increments attempts, and keeps the appointment pending', async () => {
       access.assertAppointmentAccess.mockResolvedValue(buildAppointment());
       prisma.validationCode.findFirst.mockResolvedValue(
-        buildValidationCode({ codeHash: expectedHash('111111') }),
+        buildValidationCode({
+          codeHash: expectedHash('appointment-1', '111111'),
+        }),
       );
+      prisma.validationCode.aggregate.mockResolvedValue({
+        _sum: { attempts: 0 },
+      });
 
       const error = await expectHttpError(
         service.verify(PATIENT, 'appointment-1', { code: '222222' }),
@@ -354,11 +381,16 @@ describe('ValidationCodeService', () => {
       expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
     });
 
-    it('rejects when the attempts cap is reached with 429 TOO_MANY_ATTEMPTS', async () => {
+    it('rejects when the cumulative attempts cap is reached with 429 TOO_MANY_ATTEMPTS', async () => {
       access.assertAppointmentAccess.mockResolvedValue(buildAppointment());
       prisma.validationCode.findFirst.mockResolvedValue(
-        buildValidationCode({ attempts: 5 }),
+        buildValidationCode({
+          codeHash: expectedHash('appointment-1', '123456'),
+        }),
       );
+      prisma.validationCode.aggregate.mockResolvedValue({
+        _sum: { attempts: 5 },
+      });
 
       const error = await expectHttpError(
         service.verify(PATIENT, 'appointment-1', { code: '123456' }),
@@ -369,6 +401,10 @@ describe('ValidationCodeService', () => {
         errorCode: 'TOO_MANY_ATTEMPTS',
       });
       expect(prisma.validationCode.update).not.toHaveBeenCalled();
+      expect(prisma.validationCode.aggregate).toHaveBeenCalledWith({
+        where: { appointmentId: 'appointment-1' },
+        _sum: { attempts: true },
+      });
     });
 
     it('never logs the code and never stores it in plaintext', async () => {

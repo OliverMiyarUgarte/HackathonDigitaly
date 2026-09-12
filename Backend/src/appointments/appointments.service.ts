@@ -12,15 +12,20 @@ import type {
   DoctorAppointmentDto,
 } from '@telemed/service-contracts';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
-import type { Appointment, User } from '../generated/prisma/client';
+import {
+  Prisma,
+  type Appointment,
+  type User,
+} from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppointmentAccessService } from './appointment-access.service';
 import type { CancelAppointmentRequestDto } from './dto/cancel-appointment-request.dto';
 import type { CreateAppointmentRequestDto } from './dto/create-appointment-request.dto';
 
-const APPOINTMENT_MS = 30 * 60 * 1000;
-const BUSINESS_START_HOUR = 8;
-const BUSINESS_END_HOUR = 18;
+const SLOT_MINUTES = 30;
+const APPOINTMENT_MS = SLOT_MINUTES * 60 * 1000;
+const BUSINESS_START_MINUTES = 9 * 60;
+const BUSINESS_END_MINUTES = 17 * 60;
 const CURRENT_WINDOW_MS = 60 * 60 * 1000;
 
 type AppointmentWithDoctor = Appointment & {
@@ -48,71 +53,78 @@ export class AppointmentsService {
     const scheduledAt = new Date(dto.scheduledAt);
     this.assertBookable(scheduledAt);
 
-    return this.prisma.$transaction(async (tx) => {
-      const doctor = await tx.user.findFirst({
-        where: { id: dto.doctorId, role: 'doctor', deletedAt: null },
-        select: { id: true },
-      });
-      if (!doctor) {
-        throw new NotFoundException({
-          errorCode: 'NOT_FOUND',
-          message: 'Doctor not found',
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const doctor = await tx.user.findFirst({
+          where: { id: dto.doctorId, role: 'doctor', deletedAt: null },
+          select: { id: true },
         });
-      }
+        if (!doctor) {
+          throw new NotFoundException({
+            errorCode: 'NOT_FOUND',
+            message: 'Doctor not found',
+          });
+        }
 
-      const windowStart = new Date(scheduledAt.getTime() - APPOINTMENT_MS);
-      const windowEnd = new Date(scheduledAt.getTime() + APPOINTMENT_MS);
-      const conflict = await tx.appointment.findFirst({
-        where: {
-          status: { not: 'cancelled' },
-          OR: [
-            {
-              doctorId: dto.doctorId,
-              scheduledAt: { gt: windowStart, lt: windowEnd },
-            },
-            {
-              patientId: patient.sub,
-              scheduledAt: { gt: windowStart, lt: windowEnd },
-            },
-          ],
-        },
-        select: { id: true },
-      });
-      if (conflict) {
-        throw new ConflictException({
-          errorCode: 'SLOT_TAKEN',
-          message: 'Slot already taken',
-        });
-      }
+        const lockKey = `${dto.doctorId}:${scheduledAt.toISOString()}`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 
-      const created = await tx.appointment.create({
-        data: {
-          patientId: patient.sub,
-          doctorId: dto.doctorId,
-          scheduledAt,
-          status: 'pending_code',
-        },
-      });
-
-      for (const answer of dto.preConsult ?? []) {
-        await tx.preConsultAnswer.upsert({
+        const windowStart = new Date(scheduledAt.getTime() - APPOINTMENT_MS);
+        const windowEnd = new Date(scheduledAt.getTime() + APPOINTMENT_MS);
+        const conflict = await tx.appointment.findFirst({
           where: {
-            appointmentId_questionKey: {
+            status: { not: 'cancelled' },
+            OR: [
+              {
+                doctorId: dto.doctorId,
+                scheduledAt: { gt: windowStart, lt: windowEnd },
+              },
+              {
+                patientId: patient.sub,
+                scheduledAt: { gt: windowStart, lt: windowEnd },
+              },
+            ],
+          },
+          select: { id: true },
+        });
+        if (conflict) {
+          throw this.slotTaken();
+        }
+
+        const created = await tx.appointment.create({
+          data: {
+            patientId: patient.sub,
+            doctorId: dto.doctorId,
+            scheduledAt,
+            status: 'pending_code',
+          },
+        });
+
+        for (const answer of dto.preConsult ?? []) {
+          await tx.preConsultAnswer.upsert({
+            where: {
+              appointmentId_questionKey: {
+                appointmentId: created.id,
+                questionKey: answer.questionKey,
+              },
+            },
+            update: { answer: answer.answer },
+            create: {
               appointmentId: created.id,
               questionKey: answer.questionKey,
+              answer: answer.answer,
             },
-          },
-          update: { answer: answer.answer },
-          create: {
-            appointmentId: created.id,
-            questionKey: answer.questionKey,
-            answer: answer.answer,
-          },
-        });
-      }
+          });
+        }
 
-      return toAppointmentDto(created);
-    });
+        return toAppointmentDto(created);
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw this.slotTaken();
+      }
+      throw error;
+    }
   }
 
   async findOne(user: AuthenticatedUser, id: string): Promise<AppointmentDto> {
@@ -218,11 +230,25 @@ export class AppointmentsService {
     ) {
       throw this.validationError('scheduledAt must be in the future');
     }
-    const hour = scheduledAt.getHours();
-    if (hour < BUSINESS_START_HOUR || hour >= BUSINESS_END_HOUR) {
+    const weekday = scheduledAt.getDay();
+    if (weekday === 0 || weekday === 6) {
+      throw this.validationError('scheduledAt must be a weekday');
+    }
+    const minutes = scheduledAt.getHours() * 60 + scheduledAt.getMinutes();
+    if (
+      minutes < BUSINESS_START_MINUTES ||
+      minutes + SLOT_MINUTES > BUSINESS_END_MINUTES
+    ) {
       throw this.validationError(
-        'scheduledAt must be within business hours (08:00-18:00)',
+        'scheduledAt must be within business hours (09:00-17:00)',
       );
+    }
+    if (
+      scheduledAt.getMinutes() % SLOT_MINUTES !== 0 ||
+      scheduledAt.getSeconds() !== 0 ||
+      scheduledAt.getMilliseconds() !== 0
+    ) {
+      throw this.validationError('scheduledAt must align to a 30-minute slot');
     }
   }
 
@@ -230,6 +256,13 @@ export class AppointmentsService {
     return new BadRequestException({
       errorCode: 'VALIDATION_FAILED',
       message,
+    });
+  }
+
+  private slotTaken(): ConflictException {
+    return new ConflictException({
+      errorCode: 'SLOT_TAKEN',
+      message: 'Slot already taken',
     });
   }
 
@@ -302,6 +335,13 @@ function isCurrent(appointment: Appointment, now: number): boolean {
 
 function isTerminal(status: AppointmentStatus): boolean {
   return status === 'completed' || status === 'cancelled';
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002'
+  );
 }
 
 function localDayRange(date: Date): { start: Date; end: Date } {

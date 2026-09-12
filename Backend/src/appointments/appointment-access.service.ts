@@ -30,7 +30,11 @@ export class AppointmentAccessService {
     patientId: string,
   ): Promise<void> {
     const link = await this.prisma.appointment.findFirst({
-      where: { doctorId: doctor.sub, patientId },
+      where: {
+        doctorId: doctor.sub,
+        patientId,
+        status: { not: 'cancelled' },
+      },
       select: { id: true },
     });
     if (!link) {
@@ -42,17 +46,7 @@ export class AppointmentAccessService {
     doctor: AuthenticatedUser,
     patientId: string,
   ): Promise<void> {
-    const link = await this.prisma.appointment.findFirst({
-      where: {
-        doctorId: doctor.sub,
-        patientId,
-        status: { not: 'cancelled' },
-      },
-      select: { id: true },
-    });
-    if (!link) {
-      throw this.forbidden();
-    }
+    await this.assertPatientAccess(doctor, patientId);
   }
 
   private forbidden(): ForbiddenException {

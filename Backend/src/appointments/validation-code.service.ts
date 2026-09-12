@@ -81,11 +81,16 @@ export class ValidationCodeService {
     if (!code || code.consumedAt || code.expiresAt.getTime() <= Date.now()) {
       throw this.invalidCode();
     }
-    if (code.attempts >= this.maxAttempts) {
+
+    const attempts = await this.prisma.validationCode.aggregate({
+      where: { appointmentId },
+      _sum: { attempts: true },
+    });
+    if ((attempts._sum.attempts ?? 0) >= this.maxAttempts) {
       throw this.tooManyAttempts();
     }
 
-    const candidateHash = this.hashCode(dto.code);
+    const candidateHash = this.hashCode(appointmentId, dto.code);
     if (!this.hashesMatch(code.codeHash, candidateHash)) {
       await this.prisma.validationCode.update({
         where: { id: code.id },
@@ -121,7 +126,7 @@ export class ValidationCodeService {
     }
 
     const code = this.generateCode();
-    const codeHash = this.hashCode(code);
+    const codeHash = this.hashCode(appointmentId, code);
     const expiresAt = new Date(Date.now() + this.ttlSeconds * 1000);
 
     await this.prisma.$transaction(async (tx) => {
@@ -202,8 +207,10 @@ export class ValidationCodeService {
     return randomInt(0, CODE_MODULUS).toString().padStart(CODE_LENGTH, '0');
   }
 
-  private hashCode(code: string): string {
-    return createHmac('sha256', this.pepper).update(code).digest('hex');
+  private hashCode(appointmentId: string, code: string): string {
+    return createHmac('sha256', this.pepper)
+      .update(`${appointmentId}:${code}`)
+      .digest('hex');
   }
 
   private hashesMatch(storedHash: string, candidateHash: string): boolean {

@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -7,6 +7,7 @@ import { APP_VERSION } from './common/constants/app-version';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const configService = app.get(ConfigService);
 
   app.setGlobalPrefix('api');
@@ -45,4 +46,7 @@ async function bootstrap() {
   await app.listen(configService.get<number>('PORT', 3001));
 }
 
-void bootstrap();
+bootstrap().catch(() => {
+  new Logger('Bootstrap').error('Application failed to start');
+  process.exit(1);
+});

@@ -162,6 +162,36 @@ describe('AiProxyService', () => {
     expect(wsInstances()).toHaveLength(0);
   });
 
+  it('terminates the socket when an error fires before the session opens', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: (): Promise<unknown> =>
+        Promise.resolve({
+          sessionId: 'session-1',
+          expiresAt: '2030-01-01T00:00:00.000Z',
+        }),
+    });
+
+    const opened = service.openSession({
+      consultationId: CONSULTATION_ID,
+      appointmentId: 'appointment-1',
+      doctorId: DOCTOR_ID,
+    });
+    await flushPromises();
+    const socket = wsInstances()[0];
+    if (!socket) {
+      throw new Error('AI socket was not created');
+    }
+    socket.emit('error', new Error('boom'));
+    await opened;
+
+    expect(socket.terminate).toHaveBeenCalled();
+    expect(realtime.emitToUser).toHaveBeenCalledWith(DOCTOR_ID, 'ai.status', {
+      consultationId: CONSULTATION_ID,
+      status: 'unavailable',
+    });
+  });
+
   it('re-emits copilot.feedback to the doctor only', async () => {
     const socket = await openReadySession();
 

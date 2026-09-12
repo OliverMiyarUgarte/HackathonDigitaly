@@ -1,8 +1,13 @@
 import { ConflictException, HttpException } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
 import { argon2id, hash } from 'argon2';
 import type { AuthTokensDto } from '@telemed/service-contracts';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
-import type { RefreshToken, User } from '../generated/prisma/client';
+import {
+  Prisma,
+  type RefreshToken,
+  type User,
+} from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from './auth.service';
 import type { LoginRequestDto } from './dto/login-request.dto';
@@ -23,6 +28,10 @@ type RefreshTokenDelegateMock = {
 };
 
 interface PrismaMock {
+  $transaction: jest.Mock<
+    Promise<unknown>,
+    [(tx: PrismaMock) => Promise<unknown>]
+  >;
   user: UserDelegateMock;
   refreshToken: RefreshTokenDelegateMock;
 }
@@ -30,6 +39,10 @@ interface PrismaMock {
 interface TokenServiceMock {
   issueTokens: jest.Mock<Promise<IssuedTokens>, [AuthenticatedUser]>;
   hashRefreshToken: jest.Mock<string, [string]>;
+}
+
+interface ConfigMock {
+  get: jest.Mock<boolean, [string, boolean]>;
 }
 
 function buildUser(overrides: Partial<User> = {}): User {
@@ -82,7 +95,11 @@ function buildIssued(overrides: Partial<IssuedTokens> = {}): IssuedTokens {
 }
 
 function createPrismaMock(): PrismaMock {
-  return {
+  const mock: PrismaMock = {
+    $transaction: jest.fn<
+      Promise<unknown>,
+      [(tx: PrismaMock) => Promise<unknown>]
+    >(),
     user: {
       findUnique: jest.fn<Promise<User | null>, [unknown]>(),
       create: jest.fn<Promise<User>, [unknown]>(),
@@ -94,6 +111,21 @@ function createPrismaMock(): PrismaMock {
       updateMany: jest.fn<Promise<{ count: number }>, [unknown]>(),
     },
   };
+  mock.$transaction.mockImplementation((callback) => callback(mock));
+  return mock;
+}
+
+function createConfigMock(): ConfigMock {
+  return {
+    get: jest.fn<boolean, [string, boolean]>((_key, fallback) => fallback),
+  };
+}
+
+function uniqueConstraintError(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: '7.10.0',
+  });
 }
 
 function createTokenServiceMock(): TokenServiceMock {
@@ -121,13 +153,16 @@ describe('AuthService', () => {
   let service: AuthService;
   let prisma: PrismaMock;
   let tokenService: TokenServiceMock;
+  let config: ConfigMock;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     tokenService = createTokenServiceMock();
+    config = createConfigMock();
     service = new AuthService(
       prisma as unknown as PrismaService,
       tokenService as unknown as TokenService,
+      config as unknown as ConfigService,
     );
     tokenService.issueTokens.mockResolvedValue(buildIssued());
     tokenService.hashRefreshToken.mockReturnValue('stored-hash');
@@ -176,6 +211,71 @@ describe('AuthService', () => {
           expiresAt: expect.any(Date) as Date,
         },
       });
+    });
+
+    it('rejects doctor self-registration when the flag is disabled', async () => {
+      const error = await expectHttpError(
+        service.register({
+          name: 'Dr. No One',
+          email: 'doctor@example.test',
+          password: 'Password123',
+          role: 'doctor',
+          specialty: 'Cardiologia',
+          crm: 'CRM-SP 000000',
+        } satisfies RegisterRequestDto),
+      );
+
+      expect(error).toBeInstanceOf(HttpException);
+      expect(error.getStatus()).toBe(403);
+      expect(error.getResponse()).toMatchObject({ errorCode: 'FORBIDDEN' });
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('allows doctor self-registration when the flag is enabled', async () => {
+      config.get.mockReturnValue(true);
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue(
+        buildUser({
+          id: 'doctor-1',
+          role: 'doctor',
+          email: 'doctor@example.test',
+          specialty: 'Cardiologia',
+          crm: 'CRM-SP 000000',
+        }),
+      );
+      prisma.refreshToken.create.mockResolvedValue(
+        buildRefreshToken({ userId: 'doctor-1' }),
+      );
+
+      const result = await service.register({
+        name: 'Dr. Someone',
+        email: 'doctor@example.test',
+        password: 'Password123',
+        role: 'doctor',
+        specialty: 'Cardiologia',
+        crm: 'CRM-SP 000000',
+      } satisfies RegisterRequestDto);
+
+      expect(result.user.role).toBe('doctor');
+      expect(prisma.user.create).toHaveBeenCalled();
+    });
+
+    it('maps a unique constraint violation on create to 409 EMAIL_TAKEN', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockRejectedValue(uniqueConstraintError());
+
+      const error = await expectHttpError(
+        service.register({
+          name: 'Racer',
+          email: 'race@example.test',
+          password: 'Password123',
+          role: 'patient',
+        } satisfies RegisterRequestDto),
+      );
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error.getStatus()).toBe(409);
+      expect(error.getResponse()).toMatchObject({ errorCode: 'EMAIL_TAKEN' });
     });
   });
 
@@ -232,10 +332,13 @@ describe('AuthService', () => {
       });
     });
 
-    it('rejects a revoked token with 401 INVALID_REFRESH_TOKEN', async () => {
-      prisma.refreshToken.findUnique.mockResolvedValue(
-        buildRefreshToken({ revokedAt: new Date() }),
-      );
+    it('revokes the whole family when a revoked token is reused', async () => {
+      const stored = buildRefreshToken({
+        userId: 'user-1',
+        revokedAt: new Date(),
+      });
+      prisma.refreshToken.findUnique.mockResolvedValue(stored);
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 3 });
 
       const error = await expectHttpError(
         service.refresh({
@@ -246,6 +349,10 @@ describe('AuthService', () => {
       expect(error.getStatus()).toBe(401);
       expect(error.getResponse()).toMatchObject({
         errorCode: 'INVALID_REFRESH_TOKEN',
+      });
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: stored.userId, revokedAt: null },
+        data: { revokedAt: expect.any(Date) as Date },
       });
     });
 
@@ -277,9 +384,7 @@ describe('AuthService', () => {
       });
       prisma.refreshToken.findUnique.mockResolvedValue(stored);
       prisma.user.findUnique.mockResolvedValue(buildUser());
-      prisma.refreshToken.update.mockResolvedValue(
-        buildRefreshToken({ revokedAt: new Date() }),
-      );
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
       prisma.refreshToken.create.mockResolvedValue(buildRefreshToken());
       tokenService.issueTokens.mockResolvedValue(issued);
 
@@ -288,8 +393,8 @@ describe('AuthService', () => {
       } satisfies RefreshRequestDto);
 
       expect(tokens).toEqual(issued.tokens);
-      expect(prisma.refreshToken.update).toHaveBeenCalledWith({
-        where: { id: stored.id },
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { id: stored.id, revokedAt: null },
         data: { revokedAt: expect.any(Date) as Date },
       });
       expect(prisma.refreshToken.create).toHaveBeenCalledWith({
@@ -298,6 +403,30 @@ describe('AuthService', () => {
           tokenHash: 'rotated-hash',
           expiresAt: issued.refreshTokenExpiresAt,
         },
+      });
+    });
+
+    it('does not issue a pair and revokes the family when the conditional update loses the race', async () => {
+      const stored = buildRefreshToken({ tokenHash: 'stored-hash' });
+      prisma.refreshToken.findUnique.mockResolvedValue(stored);
+      prisma.user.findUnique.mockResolvedValue(buildUser());
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+
+      const error = await expectHttpError(
+        service.refresh({
+          refreshToken: 'presented',
+        } satisfies RefreshRequestDto),
+      );
+
+      expect(error.getStatus()).toBe(401);
+      expect(error.getResponse()).toMatchObject({
+        errorCode: 'INVALID_REFRESH_TOKEN',
+      });
+      expect(tokenService.issueTokens).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.updateMany).toHaveBeenLastCalledWith({
+        where: { userId: stored.userId, revokedAt: null },
+        data: { revokedAt: expect.any(Date) as Date },
       });
     });
   });

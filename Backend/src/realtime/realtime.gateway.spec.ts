@@ -3,6 +3,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { JwtService } from '@nestjs/jwt';
 import type { AppointmentAccessService } from '../appointments/appointment-access.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
+import type { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway, type RealtimeSocket } from './realtime.gateway';
 import { RealtimeService, type RealtimeServer } from './realtime.service';
 
@@ -60,11 +61,13 @@ describe('RealtimeGateway', () => {
   let gateway: RealtimeGateway;
   let jwtService: { verifyAsync: jest.Mock };
   let accessService: { assertAppointmentAccess: jest.Mock };
+  let prisma: { user: { findFirst: jest.Mock } };
   let realtimeService: RealtimeService;
 
   beforeEach(() => {
     jwtService = { verifyAsync: jest.fn() };
     accessService = { assertAppointmentAccess: jest.fn() };
+    prisma = { user: { findFirst: jest.fn() } };
     realtimeService = new RealtimeService({
       get: jest.fn(),
     } as unknown as ConfigService);
@@ -72,6 +75,7 @@ describe('RealtimeGateway', () => {
       jwtService as unknown as JwtService,
       accessService as unknown as AppointmentAccessService,
       realtimeService,
+      prisma as unknown as PrismaService,
     );
   });
 
@@ -102,6 +106,7 @@ describe('RealtimeGateway', () => {
 
     it('accepts a valid access token from the handshake auth', async () => {
       jwtService.verifyAsync.mockResolvedValue({ sub: 'u1', role: 'patient' });
+      prisma.user.findFirst.mockResolvedValue({ id: 'u1', role: 'patient' });
       const { socket, mock } = createSocketMock({
         handshake: { auth: { token: 'token' }, headers: {} },
       });
@@ -109,12 +114,17 @@ describe('RealtimeGateway', () => {
       await gateway.handleConnection(socket);
 
       expect(jwtService.verifyAsync).toHaveBeenCalledWith('token');
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: { id: 'u1', deletedAt: null },
+        select: { id: true, role: true },
+      });
       expect(mock.data.user).toEqual({ sub: 'u1', role: 'patient' });
       expect(mock.disconnect).not.toHaveBeenCalled();
     });
 
     it('falls back to the Authorization bearer header', async () => {
       jwtService.verifyAsync.mockResolvedValue({ sub: 'u2', role: 'doctor' });
+      prisma.user.findFirst.mockResolvedValue({ id: 'u2', role: 'doctor' });
       const { socket, mock } = createSocketMock({
         handshake: {
           auth: {},
@@ -126,6 +136,20 @@ describe('RealtimeGateway', () => {
 
       expect(jwtService.verifyAsync).toHaveBeenCalledWith('header-token');
       expect(mock.data.user).toEqual({ sub: 'u2', role: 'doctor' });
+    });
+
+    it('disconnects when the token user no longer exists', async () => {
+      jwtService.verifyAsync.mockResolvedValue({ sub: 'u3', role: 'patient' });
+      prisma.user.findFirst.mockResolvedValue(null);
+      const { socket, mock } = createSocketMock({
+        handshake: { auth: { token: 'token' }, headers: {} },
+      });
+
+      await gateway.handleConnection(socket);
+
+      expect(mock.disconnect).toHaveBeenCalledWith(true);
+      expect(mock.data.user).toBeUndefined();
+      expect(mock.join).not.toHaveBeenCalled();
     });
   });
 

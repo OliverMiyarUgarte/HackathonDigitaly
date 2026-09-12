@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
@@ -85,6 +86,17 @@ export class AttachmentsController {
       `inline; filename="${sanitizeFileName(attachment.fileName)}"`,
     );
     response.setHeader('X-Content-Type-Options', 'nosniff');
+    stream.on('error', () => {
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
+      response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+        error: 'INTERNAL_ERROR',
+        message: 'Internal server error',
+      });
+    });
     stream.pipe(response);
   }
 }

@@ -1,6 +1,10 @@
 import { HttpException } from '@nestjs/common';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
-import type { Appointment, User } from '../generated/prisma/client';
+import {
+  Prisma,
+  type Appointment,
+  type User,
+} from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import { AppointmentAccessService } from './appointment-access.service';
 import { AppointmentsService } from './appointments.service';
@@ -30,6 +34,7 @@ interface PrismaMock {
     Promise<unknown>,
     [(tx: PrismaMock) => Promise<unknown>]
   >;
+  $executeRaw: jest.Mock;
   user: UserDelegateMock;
   appointment: AppointmentDelegateMock;
   preConsultAnswer: PreConsultAnswerDelegateMock;
@@ -46,6 +51,7 @@ function createPrismaMock(): PrismaMock {
       Promise<unknown>,
       [(tx: PrismaMock) => Promise<unknown>]
     >(),
+    $executeRaw: jest.fn(),
     user: { findFirst: jest.fn() },
     appointment: {
       findFirst: jest.fn(),
@@ -97,11 +103,31 @@ function buildUser(overrides: Partial<User> = {}): User {
   };
 }
 
-function futureBusinessDate(daysAhead = 1, hour = 10): Date {
+function futureBusinessDate(daysAhead = 1, hour = 10, minute = 0): Date {
   const date = new Date();
   date.setDate(date.getDate() + daysAhead);
-  date.setHours(hour, 0, 0, 0);
+  date.setHours(hour, minute, 0, 0);
+  while (date.getDay() === 0 || date.getDay() === 6) {
+    date.setDate(date.getDate() + 1);
+  }
   return date;
+}
+
+function futureWeekendDate(): Date {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(10, 0, 0, 0);
+  while (date.getDay() !== 6) {
+    date.setDate(date.getDate() + 1);
+  }
+  return date;
+}
+
+function uniqueConstraintError(): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: '7.10.0',
+  });
 }
 
 async function expectHttpError(
@@ -191,6 +217,70 @@ describe('AppointmentsService', () => {
       expect(error.getStatus()).toBe(409);
       expect(error.getResponse()).toMatchObject({ errorCode: 'SLOT_TAKEN' });
       expect(prisma.appointment.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a weekend with 400 VALIDATION_FAILED', async () => {
+      const error = await expectHttpError(
+        service.create(PATIENT, {
+          doctorId: DOCTOR.sub,
+          scheduledAt: futureWeekendDate().toISOString(),
+        } satisfies CreateAppointmentRequestDto),
+      );
+
+      expect(error.getStatus()).toBe(400);
+      expect(error.getResponse()).toMatchObject({
+        errorCode: 'VALIDATION_FAILED',
+      });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects a time that is not aligned to a 30-minute slot', async () => {
+      const error = await expectHttpError(
+        service.create(PATIENT, {
+          doctorId: DOCTOR.sub,
+          scheduledAt: futureBusinessDate(1, 10, 15).toISOString(),
+        } satisfies CreateAppointmentRequestDto),
+      );
+
+      expect(error.getStatus()).toBe(400);
+      expect(error.getResponse()).toMatchObject({
+        errorCode: 'VALIDATION_FAILED',
+      });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('takes the doctor/slot advisory lock before checking for conflicts', async () => {
+      const scheduledAt = futureBusinessDate();
+      prisma.user.findFirst.mockResolvedValue({ id: DOCTOR.sub });
+      prisma.appointment.findFirst.mockResolvedValue(null);
+      prisma.appointment.create.mockResolvedValue(
+        buildAppointment({ scheduledAt }),
+      );
+
+      await service.create(PATIENT, {
+        doctorId: DOCTOR.sub,
+        scheduledAt: scheduledAt.toISOString(),
+      } satisfies CreateAppointmentRequestDto);
+
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+      expect(prisma.appointment.findFirst).toHaveBeenCalled();
+    });
+
+    it('maps a unique constraint violation on create to 409 SLOT_TAKEN', async () => {
+      const scheduledAt = futureBusinessDate();
+      prisma.user.findFirst.mockResolvedValue({ id: DOCTOR.sub });
+      prisma.appointment.findFirst.mockResolvedValue(null);
+      prisma.appointment.create.mockRejectedValue(uniqueConstraintError());
+
+      const error = await expectHttpError(
+        service.create(PATIENT, {
+          doctorId: DOCTOR.sub,
+          scheduledAt: scheduledAt.toISOString(),
+        } satisfies CreateAppointmentRequestDto),
+      );
+
+      expect(error.getStatus()).toBe(409);
+      expect(error.getResponse()).toMatchObject({ errorCode: 'SLOT_TAKEN' });
     });
 
     it('creates a pending_code appointment and upserts pre-consult answers', async () => {

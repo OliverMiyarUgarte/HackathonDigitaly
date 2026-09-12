@@ -59,9 +59,21 @@ export class LoggingInterceptor implements NestInterceptor {
   }
 
   private resolvePath(request: RequestWithContext): string {
+    const routePath = resolveRoutePath(request.route as unknown);
+    if (routePath) {
+      return routePath;
+    }
     if (request.path) {
       return request.path;
     }
     return request.url.split('?')[0];
   }
+}
+
+function resolveRoutePath(route: unknown): string | null {
+  if (typeof route !== 'object' || route === null) {
+    return null;
+  }
+  const path = (route as { path?: unknown }).path;
+  return typeof path === 'string' && path.length > 0 ? path : null;
 }

@@ -54,6 +54,7 @@ Documented in `Backend/.env.example`. Compose overrides the last column.
 | `JWT_SECRET` | yes | `<random>` | Access token signing key |
 | `JWT_EXPIRES_IN` | no | `15m` | Access token TTL |
 | `JWT_REFRESH_EXPIRES_IN` | no | `7d` | Refresh token TTL |
+| `ALLOW_DOCTOR_SELF_REGISTRATION` | no | `false` | Allows POST `/auth/register` with `role=doctor`; disabled in prod (doctors are seeded for the demo) |
 | `SWAGGER_ENABLED` | no | `true` | Mount `/docs`; set `false` in production |
 | `MAIL_HOST` / `MAIL_PORT` | no | `mailhog` / `1025` | SMTP for validation codes |
 | `MAIL_USER` / `MAIL_PASSWORD` | no | empty | SMTP credentials |

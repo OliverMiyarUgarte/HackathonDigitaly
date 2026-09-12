@@ -185,6 +185,42 @@ describe('Appointments (e2e)', () => {
       });
   });
 
+  it('allows exactly one of two concurrent bookings for the same slot', async () => {
+    const slotsResponse = await request(app.getHttpServer())
+      .get(`/api/appointments/doctors/${doctorId}/slots`)
+      .set('Authorization', `Bearer ${patientToken}`)
+      .expect(200);
+
+    const target = (slotsResponse.body as SlotDto[]).find(
+      (slot) =>
+        new Date(slot.startsAt).getTime() >
+        Date.now() + 2 * 24 * 60 * 60 * 1000,
+    );
+    expect(target).toBeDefined();
+    const scheduledAt = (target as SlotDto).startsAt;
+
+    const [first, second] = await Promise.all([
+      request(app.getHttpServer())
+        .post('/api/appointments')
+        .set('Authorization', `Bearer ${patientToken}`)
+        .send({ doctorId, scheduledAt }),
+      request(app.getHttpServer())
+        .post('/api/appointments')
+        .set('Authorization', `Bearer ${patientTwoToken}`)
+        .send({ doctorId, scheduledAt }),
+    ]);
+
+    expect([first.status, second.status].sort()).toEqual([201, 409]);
+
+    for (const response of [first, second]) {
+      if (response.status === 201) {
+        createdAppointmentIds.push((response.body as AppointmentDto).id);
+      } else {
+        expect(response.body).toMatchObject({ error: 'SLOT_TAKEN' });
+      }
+    }
+  });
+
   it('forbids another patient from reading the appointment', () => {
     return request(app.getHttpServer())
       .get(`/api/appointments/${appointmentId}`)
