@@ -42,6 +42,7 @@
     "@nestjs/terminus": "^11.1.1",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
+    "@telemed/service-contracts": "file:../service-contracts",
     "argon2": "0.45.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
