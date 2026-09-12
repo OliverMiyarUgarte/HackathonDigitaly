@@ -11,6 +11,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { CorrelationIdInterceptor } from './common/interceptors/correlation-id.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { ConsultationsModule } from './consultations/consultations.module';
 import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -55,6 +56,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     AppointmentsModule,
     MailModule,
     RealtimeModule,
+    ConsultationsModule,
   ],
   providers: [
     {
