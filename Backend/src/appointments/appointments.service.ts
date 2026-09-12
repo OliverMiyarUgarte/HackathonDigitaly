@@ -241,7 +241,7 @@ export class AppointmentsService {
   }
 }
 
-function toAppointmentDto(appointment: Appointment): AppointmentDto {
+export function toAppointmentDto(appointment: Appointment): AppointmentDto {
   return {
     id: appointment.id,
     patientId: appointment.patientId,
