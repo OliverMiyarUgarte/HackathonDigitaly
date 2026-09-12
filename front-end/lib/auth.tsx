@@ -1,0 +1,237 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import {
+  clearTokens,
+  get as apiGet,
+  getAccessToken,
+  getRefreshToken,
+  post,
+  refreshAccessToken,
+  setTokens,
+} from "./api";
+import {
+  authResponseSchema,
+  userDtoSchema,
+  type AuthResponseDto,
+  type LoginRequestDto,
+  type RegisterRequestDto,
+  type UserDto,
+  type UserRole,
+} from "./contracts";
+
+export type SessionStatus = "loading" | "authenticated" | "unauthenticated";
+
+export interface SessionContextValue {
+  user: UserDto | null;
+  status: SessionStatus;
+  isDoctor: boolean;
+  isPatient: boolean;
+  homePath: string;
+  login: (input: LoginRequestDto) => Promise<UserDto>;
+  register: (input: RegisterRequestDto) => Promise<UserDto>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<boolean>;
+  me: () => Promise<UserDto | null>;
+}
+
+const SessionContext = createContext<SessionContextValue | null>(null);
+
+function homePathFor(user: UserDto | null): string {
+  return user?.role === "doctor" ? "/medico" : "/paciente";
+}
+
+export function SessionProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<UserDto | null>(null);
+  const [status, setStatus] = useState<SessionStatus>("loading");
+
+  const loadProfile = useCallback(async (): Promise<UserDto> => {
+    const profile = await apiGet("/auth/me", userDtoSchema);
+    setUser(profile);
+    setStatus("authenticated");
+    return profile;
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const start = async (): Promise<UserDto | null> => {
+      const accessToken = getAccessToken();
+      const refreshToken = getRefreshToken();
+      if (!accessToken && !refreshToken) {
+        return null;
+      }
+      if (!accessToken && refreshToken) {
+        const refreshed = await refreshAccessToken();
+        if (!refreshed) {
+          throw new Error("INVALID_REFRESH_TOKEN");
+        }
+      }
+      return apiGet("/auth/me", userDtoSchema);
+    };
+
+    Promise.resolve()
+      .then(start)
+      .then((profile) => {
+        if (!active) {
+          return;
+        }
+        if (profile) {
+          setUser(profile);
+          setStatus("authenticated");
+        } else {
+          setUser(null);
+          setStatus("unauthenticated");
+        }
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+        clearTokens();
+        setUser(null);
+        setStatus("unauthenticated");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const applySession = useCallback((response: AuthResponseDto): UserDto => {
+    setTokens(response.tokens);
+    setUser(response.user);
+    setStatus("authenticated");
+    return response.user;
+  }, []);
+
+  const login = useCallback(
+    async (input: LoginRequestDto): Promise<UserDto> => {
+      const response = await post("/auth/login", input, authResponseSchema);
+      return applySession(response);
+    },
+    [applySession],
+  );
+
+  const register = useCallback(
+    async (input: RegisterRequestDto): Promise<UserDto> => {
+      const response = await post("/auth/register", input, authResponseSchema);
+      return applySession(response);
+    },
+    [applySession],
+  );
+
+  const logout = useCallback(async (): Promise<void> => {
+    const refreshToken = getRefreshToken();
+    try {
+      await post(
+        "/auth/logout",
+        refreshToken ? { refreshToken } : {},
+        undefined,
+        { auth: false },
+      );
+    } catch {
+      clearTokens();
+    }
+    clearTokens();
+    setUser(null);
+    setStatus("unauthenticated");
+  }, []);
+
+  const refresh = useCallback(async (): Promise<boolean> => {
+    return refreshAccessToken();
+  }, []);
+
+  const me = useCallback(async (): Promise<UserDto | null> => {
+    try {
+      return await loadProfile();
+    } catch {
+      clearTokens();
+      setUser(null);
+      setStatus("unauthenticated");
+      return null;
+    }
+  }, [loadProfile]);
+
+  const value = useMemo<SessionContextValue>(
+    () => ({
+      user,
+      status,
+      isDoctor: user?.role === "doctor",
+      isPatient: user?.role === "patient",
+      homePath: homePathFor(user),
+      login,
+      register,
+      logout,
+      refresh,
+      me,
+    }),
+    [user, status, login, register, logout, refresh, me],
+  );
+
+  return (
+    <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
+  );
+}
+
+export function useSession(): SessionContextValue {
+  const context = useContext(SessionContext);
+  if (!context) {
+    throw new Error("useSession deve ser usado dentro de SessionProvider");
+  }
+  return context;
+}
+
+export function SessionLoading({ label = "Carregando sessão" }: { label?: string }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-screen items-center justify-center gap-3 bg-bg text-texto-2"
+    >
+      <Loader2 aria-hidden="true" className="size-5 animate-spin text-celeste-500" />
+      <span className="text-sm">{label}</span>
+    </div>
+  );
+}
+
+export function RequireRole({
+  roles,
+  children,
+}: {
+  roles: readonly UserRole[];
+  children: ReactNode;
+}) {
+  const { user, status, homePath } = useSession();
+  const router = useRouter();
+  const allowed = user ? roles.includes(user.role) : false;
+
+  useEffect(() => {
+    if (status === "loading") {
+      return;
+    }
+    if (!user) {
+      router.replace("/entrar");
+      return;
+    }
+    if (!allowed) {
+      router.replace(homePath);
+    }
+  }, [status, user, allowed, homePath, router]);
+
+  if (status === "loading" || !user || !allowed) {
+    return <SessionLoading />;
+  }
+
+  return <>{children}</>;
+}
