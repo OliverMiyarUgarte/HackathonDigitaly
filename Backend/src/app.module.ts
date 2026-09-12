@@ -14,6 +14,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
   imports: [
@@ -40,6 +41,10 @@ import { PrismaModule } from './prisma/prisma.module';
         OTP_MAX_ATTEMPTS: Joi.number().integer().positive().default(5),
         AI_SERVICE_URL: Joi.string().default('http://localhost:8000'),
         UPLOAD_DIR: Joi.string().default('./uploads'),
+        STUN_URLS: Joi.string().default('stun:stun.l.google.com:19302'),
+        TURN_URLS: Joi.string().optional(),
+        TURN_USERNAME: Joi.string().allow('').optional(),
+        TURN_CREDENTIAL: Joi.string().allow('').optional(),
       }),
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
@@ -49,6 +54,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AuthModule,
     AppointmentsModule,
     MailModule,
+    RealtimeModule,
   ],
   providers: [
     {
