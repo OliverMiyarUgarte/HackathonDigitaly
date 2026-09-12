@@ -1,7 +1,8 @@
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "cjs"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "cjs"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -52,6 +53,7 @@ model User {
   attachments           Attachment[]
   auditLogs             AuditLog[]
 
+  @@index([role, deletedAt])
   @@map("users")
 }
 
@@ -104,7 +106,8 @@ model ValidationCode {
 
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-  @@index([appointmentId, expiresAt])
+  @@index([appointmentId])
+  @@index([appointmentId, createdAt(sort: Desc)], where: { consumedAt: null })
   @@map("validation_codes")
 }
 
@@ -122,6 +125,7 @@ model Consultation {
   attachments  Attachment[]
 
   @@index([status])
+  @@index([startedAt(sort: Desc)])
   @@map("consultations")
 }
 

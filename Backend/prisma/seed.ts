@@ -20,6 +20,7 @@ const DEMO_IDS = {
   completedConsultation: 'c0000000-0000-4000-8000-000000000001',
   medicalRecord: 'd0000000-0000-4000-8000-000000000001',
   consumedValidationCode: 'e0000000-0000-4000-8000-000000000001',
+  confirmedValidationCode: 'e0000000-0000-4000-8000-000000000002',
 };
 
 const preConsultAnswers = [
@@ -133,6 +134,13 @@ async function main(): Promise<void> {
     DEMO_IDS.consumedCodeAppointment,
     '482913',
   );
+  const confirmedCodeConsumedAt = new Date(now.getTime() - 10 * 60 * 1000);
+  const confirmedCodeExpiresAt = new Date(now.getTime() + 10 * 60 * 1000);
+  const confirmedCodeHash = hashValidationCode(
+    otpPepper,
+    DEMO_IDS.confirmedAppointment,
+    '135790',
+  );
 
   const pendingAppointment = await prisma.appointment.upsert({
     where: { id: DEMO_IDS.pendingAppointment },
@@ -152,7 +160,7 @@ async function main(): Promise<void> {
     },
   });
 
-  await prisma.appointment.upsert({
+  const confirmedAppointment = await prisma.appointment.upsert({
     where: { id: DEMO_IDS.confirmedAppointment },
     update: {
       patientId: patient.id,
@@ -262,6 +270,25 @@ async function main(): Promise<void> {
   }
 
   await prisma.validationCode.upsert({
+    where: { id: DEMO_IDS.confirmedValidationCode },
+    update: {
+      appointmentId: confirmedAppointment.id,
+      codeHash: confirmedCodeHash,
+      expiresAt: confirmedCodeExpiresAt,
+      consumedAt: confirmedCodeConsumedAt,
+      attempts: 1,
+    },
+    create: {
+      id: DEMO_IDS.confirmedValidationCode,
+      appointmentId: confirmedAppointment.id,
+      codeHash: confirmedCodeHash,
+      expiresAt: confirmedCodeExpiresAt,
+      consumedAt: confirmedCodeConsumedAt,
+      attempts: 1,
+    },
+  });
+
+  await prisma.validationCode.upsert({
     where: { id: DEMO_IDS.consumedValidationCode },
     update: {
       appointmentId: consumedCodeAppointment.id,
@@ -282,7 +309,7 @@ async function main(): Promise<void> {
 
   console.log(`Seeded demo users: ${doctor.email}, ${doctorTwo.email}, ${patient.email}, ${patientTwo.email}`);
   console.log(`Pending appointment: ${pendingAppointment.id}`);
-  console.log(`Confirmed with consumed code: ${consumedCodeAppointment.id}`);
+  console.log(`Confirmed with consumed code: ${confirmedAppointment.id}, ${consumedCodeAppointment.id}`);
 }
 
 main()
