@@ -1,0 +1,195 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  doctor
+  patient
+}
+
+enum AppointmentStatus {
+  pending_code
+  confirmed
+  in_progress
+  completed
+  cancelled
+}
+
+enum ConsultationStatus {
+  active
+  ended
+}
+
+enum AttachmentKind {
+  document
+  image
+  other
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  role         UserRole
+  name         String
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  specialty    String?
+  crm          String?
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  appointmentsAsPatient Appointment[]     @relation("AppointmentsAsPatient")
+  appointmentsAsDoctor  Appointment[]     @relation("AppointmentsAsDoctor")
+  refreshTokens         RefreshToken[]
+  recordsAsPatient      MedicalRecord[]   @relation("RecordsAsPatient")
+  recordsAuthored       MedicalRecord[]   @relation("RecordsAuthored")
+  attachments           Attachment[]
+  auditLogs             AuditLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Appointment {
+  id           String            @id @default(uuid()) @db.Uuid
+  patientId    String            @map("patient_id") @db.Uuid
+  doctorId     String            @map("doctor_id") @db.Uuid
+  scheduledAt  DateTime          @map("scheduled_at") @db.Timestamptz(6)
+  status       AppointmentStatus @default(pending_code)
+  cancelReason String?           @map("cancel_reason")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  patient          User              @relation("AppointmentsAsPatient", fields: [patientId], references: [id])
+  doctor           User              @relation("AppointmentsAsDoctor", fields: [doctorId], references: [id])
+  validationCodes  ValidationCode[]
+  consultation     Consultation?
+  preConsultAnswers PreConsultAnswer[]
+  attachments      Attachment[]
+
+  @@index([doctorId, scheduledAt])
+  @@index([patientId, scheduledAt(sort: Desc)])
+  @@index([status])
+  @@map("appointments")
+}
+
+model ValidationCode {
+  id            String    @id @default(uuid()) @db.Uuid
+  appointmentId String    @map("appointment_id") @db.Uuid
+  codeHash      String    @map("code_hash")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt    DateTime? @map("consumed_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId, expiresAt])
+  @@map("validation_codes")
+}
+
+model Consultation {
+  id            String             @id @default(uuid()) @db.Uuid
+  appointmentId String             @unique @map("appointment_id") @db.Uuid
+  status        ConsultationStatus @default(active)
+  startedAt     DateTime           @default(now()) @map("started_at") @db.Timestamptz(6)
+  endedAt       DateTime?          @map("ended_at") @db.Timestamptz(6)
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  appointment  Appointment     @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  medicalRecord MedicalRecord?
+  attachments  Attachment[]
+
+  @@index([status])
+  @@map("consultations")
+}
+
+model MedicalRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  patientId      String   @map("patient_id") @db.Uuid
+  consultationId String   @unique @map("consultation_id") @db.Uuid
+  createdBy      String   @map("created_by") @db.Uuid
+  notes          String
+  diagnosis      String?
+  prescriptions  String[] @default([])
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  patient      User         @relation("RecordsAsPatient", fields: [patientId], references: [id])
+  consultation Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  author       User         @relation("RecordsAuthored", fields: [createdBy], references: [id])
+
+  @@index([patientId, createdAt(sort: Desc)])
+  @@map("medical_records")
+}
+
+model PreConsultAnswer {
+  id            String   @id @default(uuid()) @db.Uuid
+  appointmentId String   @map("appointment_id") @db.Uuid
+  questionKey   String   @map("question_key")
+  answer        String
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, questionKey])
+  @@map("pre_consult_answers")
+}
+
+model Attachment {
+  id             String         @id @default(uuid()) @db.Uuid
+  appointmentId  String         @map("appointment_id") @db.Uuid
+  consultationId String?        @map("consultation_id") @db.Uuid
+  uploaderId     String         @map("uploader_id") @db.Uuid
+  fileName       String         @map("file_name")
+  contentType    String         @map("content_type")
+  sizeBytes      Int            @map("size_bytes")
+  kind           AttachmentKind
+  storageKey     String         @map("storage_key")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  appointment  Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  consultation Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  uploader     User          @relation(fields: [uploaderId], references: [id])
+
+  @@index([appointmentId])
+  @@map("attachments")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  actorId      String?  @map("actor_id") @db.Uuid
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String   @map("resource_id")
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([resourceType, resourceId])
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}

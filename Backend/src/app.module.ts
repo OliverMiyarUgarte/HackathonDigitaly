@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { TerminusModule } from '@nestjs/terminus';
 import * as Joi from 'joi';
 import { HealthModule } from './health/health.module';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { HealthModule } from './health/health.module';
       }),
     }),
     TerminusModule,
+    PrismaModule,
     HealthModule,
   ],
 })
