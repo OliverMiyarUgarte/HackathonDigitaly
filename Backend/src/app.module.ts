@@ -11,6 +11,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { CorrelationIdInterceptor } from './common/interceptors/correlation-id.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { HealthModule } from './health/health.module';
+import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -42,6 +43,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PrismaModule,
     HealthModule,
     AuthModule,
+    MailModule,
   ],
   providers: [
     {
