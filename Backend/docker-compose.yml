@@ -36,5 +36,32 @@ services:
       ADMINER_DEFAULT_SERVER: db
     restart: unless-stopped
 
+  api:
+    build:
+      context: ..
+      dockerfile: Backend/Dockerfile
+    image: telemed-api:local
+    container_name: digitaly-tmp-api
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/digitaly_tmp
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      AI_SERVICE_URL: http://ai:8000
+      WEB_ORIGIN: http://localhost:3000
+      UPLOAD_DIR: /app/uploads
+    ports:
+      - "3001:3001"
+    volumes:
+      - digitaly_tmp_uploads:/app/uploads
+    restart: unless-stopped
+
 volumes:
   digitaly_tmp_pgdata:
+  digitaly_tmp_uploads:

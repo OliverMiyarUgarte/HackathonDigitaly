@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   HealthCheck,
   HealthCheckResult,
@@ -13,6 +13,8 @@ import { Public } from '../common/decorators/public.decorator';
 export class HealthController {
   constructor(private readonly health: HealthCheckService) {}
 
+  @ApiOperation({ summary: 'Liveness probe' })
+  @ApiOkResponse({ description: 'The service process is alive' })
   @Get()
   @HealthCheck()
   check(): Promise<HealthCheckResult> {
