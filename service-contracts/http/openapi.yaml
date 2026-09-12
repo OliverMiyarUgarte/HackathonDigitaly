@@ -1,0 +1,1433 @@
+openapi: 3.1.0
+info:
+  title: Digitaly Telemedicine API
+  version: 0.1.0
+  description: >
+    Shared HTTP contract for the Digitaly telemedicine platform. The API is served
+    under the global prefix /api, therefore every path below includes it.
+servers:
+  - url: /
+tags:
+  - name: auth
+    description: Registration, login, token refresh and current user
+  - name: users
+    description: Doctor and patient profiles
+  - name: appointments
+    description: Booking, email validation codes, calendars and pre-consult
+  - name: consultations
+    description: Consultation lifecycle and WebRTC session setup
+  - name: records
+    description: Medical records and patient overview
+  - name: attachments
+    description: Appointment and consultation attachments
+  - name: health
+    description: Liveness and readiness probes
+paths:
+  /api/auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: Register a doctor or patient
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequestDto'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponseDto'
+        '400':
+          $ref: '#/components/responses/Error'
+        '409':
+          description: Email already taken
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Exchange credentials for JWT tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequestDto'
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponseDto'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refresh
+      summary: Rotate a refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequestDto'
+      responses:
+        '200':
+          description: New token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensDto'
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the current refresh token
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequestDto'
+      responses:
+        '204':
+          description: Logged out
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentUser
+      summary: Get the authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/users/me:
+    get:
+      tags: [users]
+      operationId: getUserProfile
+      summary: Get the authenticated user profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [users]
+      operationId: updateUserProfile
+      summary: Update the authenticated user profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequestDto'
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDto'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/users/doctors:
+    get:
+      tags: [users]
+      operationId: listDoctors
+      summary: List doctors available for booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: specialty
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Doctors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DoctorSummaryDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/patients/{patientId}/overview:
+    get:
+      tags: [records]
+      operationId: getPatientOverview
+      summary: Get patient profile, upcoming appointment, history and pre-consult
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Patient overview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatientOverviewDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/appointments/doctors/{doctorId}/slots:
+    get:
+      tags: [appointments]
+      operationId: listDoctorSlots
+      summary: List bookable slots for a doctor
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: doctorId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Slots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SlotDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/appointments:
+    post:
+      tags: [appointments]
+      operationId: createAppointment
+      summary: Create a pending appointment and optional pre-consult answers
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppointmentRequestDto'
+      responses:
+        '201':
+          description: Appointment created with pending_code status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentDto'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Slot already taken
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/appointments/calendar:
+    get:
+      tags: [appointments]
+      operationId: getPatientCalendar
+      summary: List calendar entries for the authenticated patient
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Calendar entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CalendarEntryDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/appointments/doctor:
+    get:
+      tags: [appointments]
+      operationId: getDoctorAppointments
+      summary: List appointments for the authenticated doctor
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AppointmentStatus'
+      responses:
+        '200':
+          description: Doctor appointments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DoctorAppointmentDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/appointments/{id}:
+    get:
+      tags: [appointments]
+      operationId: getAppointment
+      summary: Get one appointment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Appointment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/appointments/{id}/request-code:
+    post:
+      tags: [appointments]
+      operationId: requestAppointmentCode
+      summary: Issue an email validation code for a pending appointment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppointmentId'
+      responses:
+        '200':
+          description: Code issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestCodeResponseDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/appointments/{id}/resend-code:
+    post:
+      tags: [appointments]
+      operationId: resendAppointmentCode
+      summary: Invalidate and reissue the validation code
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppointmentId'
+      responses:
+        '200':
+          description: Code reissued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestCodeResponseDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/appointments/{id}/verify-code:
+    post:
+      tags: [appointments]
+      operationId: verifyAppointmentCode
+      summary: Confirm the appointment with the emailed code
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppointmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyCodeRequestDto'
+      responses:
+        '200':
+          description: Appointment confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentDto'
+        '400':
+          description: Invalid or expired code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          description: Too many attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/appointments/{id}/cancel:
+    post:
+      tags: [appointments]
+      operationId: cancelAppointment
+      summary: Cancel an appointment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppointmentId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelAppointmentRequestDto'
+      responses:
+        '200':
+          description: Appointment cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppointmentDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Appointment is terminal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/appointments/{id}/pre-consult:
+    get:
+      tags: [appointments]
+      operationId: getPreConsult
+      summary: Get pre-consult answers for an appointment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppointmentId'
+      responses:
+        '200':
+          description: Pre-consult answers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PreConsultAnswerDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [appointments]
+      operationId: putPreConsult
+      summary: Create or replace pre-consult answers for an appointment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppointmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PreConsultAnswerInputDto'
+      responses:
+        '200':
+          description: Saved pre-consult answers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PreConsultAnswerDto'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/appointments/{id}/consultations/start:
+    post:
+      tags: [consultations]
+      operationId: startConsultation
+      summary: Start a consultation and get WebRTC ICE servers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppointmentId'
+      responses:
+        '201':
+          description: Consultation started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartConsultationResponseDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Appointment not confirmed or consultation already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/consultations/mine:
+    get:
+      tags: [consultations]
+      operationId: getMyConsultations
+      summary: List the authenticated patient consultation history
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Consultation history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConsultationHistoryItemDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/consultations/{id}:
+    get:
+      tags: [consultations]
+      operationId: getConsultation
+      summary: Get one consultation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConsultationId'
+      responses:
+        '200':
+          description: Consultation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/consultations/{id}/end:
+    post:
+      tags: [consultations]
+      operationId: endConsultation
+      summary: End an active consultation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConsultationId'
+      responses:
+        '200':
+          description: Consultation ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EndConsultationResponseDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Consultation is not active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/records:
+    get:
+      tags: [records]
+      operationId: listMedicalRecords
+      summary: List medical record summaries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: patientId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Medical record summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MedicalRecordSummaryDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [records]
+      operationId: createMedicalRecord
+      summary: Create a medical record for a consultation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMedicalRecordRequestDto'
+      responses:
+        '201':
+          description: Medical record created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalRecordDto'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Record already exists for this consultation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/records/{recordId}:
+    get:
+      tags: [records]
+      operationId: getMedicalRecord
+      summary: Get one medical record
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Medical record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MedicalRecordDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/appointments/{id}/attachments:
+    get:
+      tags: [attachments]
+      operationId: listAttachments
+      summary: List attachments for an appointment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppointmentId'
+      responses:
+        '200':
+          description: Attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AttachmentDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [attachments]
+      operationId: uploadAttachment
+      summary: Upload an attachment for an appointment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AppointmentId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                kind:
+                  $ref: '#/components/schemas/AttachmentKind'
+                consultationId:
+                  type: string
+      responses:
+        '201':
+          description: Attachment uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentDto'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+        '415':
+          description: Unsupported media type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
+  /api/attachments/{id}:
+    get:
+      tags: [attachments]
+      operationId: getAttachment
+      summary: Get attachment metadata
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Attachment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttachmentDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/health:
+    get:
+      tags: [health]
+      operationId: getHealth
+      summary: Liveness probe
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponseDto'
+  /api/ready:
+    get:
+      tags: [health]
+      operationId: getReady
+      summary: Readiness probe with dependency checks
+      security: []
+      responses:
+        '200':
+          description: Readiness status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponseDto'
+        '503':
+          description: Service degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponseDto'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    AppointmentId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    ConsultationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    Error:
+      description: Request could not be processed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponseDto'
+    Unauthorized:
+      description: Authentication required or token invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponseDto'
+    Forbidden:
+      description: Authenticated but not allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponseDto'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponseDto'
+  schemas:
+    UserRole:
+      type: string
+      enum: [doctor, patient]
+    AppointmentStatus:
+      type: string
+      enum: [pending_code, confirmed, in_progress, completed, cancelled]
+    ConsultationStatus:
+      type: string
+      enum: [active, ended]
+    FeedbackSeverity:
+      type: string
+      enum: [info, warning, critical]
+    AttachmentKind:
+      type: string
+      enum: [document, image, other]
+    HealthStatus:
+      type: string
+      enum: [ok, degraded]
+    DependencyStatus:
+      type: string
+      enum: [up, down, unknown]
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_FAILED
+        - UNAUTHENTICATED
+        - FORBIDDEN
+        - NOT_FOUND
+        - CONFLICT
+        - EMAIL_TAKEN
+        - INVALID_CREDENTIALS
+        - INVALID_REFRESH_TOKEN
+        - INVALID_OR_EXPIRED_CODE
+        - TOO_MANY_ATTEMPTS
+        - RATE_LIMITED
+        - SLOT_TAKEN
+        - APPOINTMENT_NOT_CONFIRMED
+        - APPOINTMENT_TERMINAL
+        - CONSULTATION_EXISTS
+        - CONSULTATION_NOT_ACTIVE
+        - RECORD_EXISTS
+        - FILE_TOO_LARGE
+        - UNSUPPORTED_MEDIA_TYPE
+        - AI_UNAVAILABLE
+        - INTERNAL_ERROR
+    ErrorResponseDto:
+      type: object
+      required:
+        - statusCode
+        - error
+        - message
+        - details
+        - timestamp
+        - path
+        - correlationId
+      properties:
+        statusCode:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: [array, 'null']
+          items:
+            type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        correlationId:
+          type: string
+    HealthResponseDto:
+      type: object
+      required: [status, uptimeSeconds, timestamp, version]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        uptimeSeconds:
+          type: number
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+    ReadyResponseDto:
+      type: object
+      required: [status, checks, timestamp]
+      properties:
+        status:
+          $ref: '#/components/schemas/HealthStatus'
+        checks:
+          type: object
+          required: [database, ai]
+          properties:
+            database:
+              $ref: '#/components/schemas/DependencyStatus'
+            ai:
+              $ref: '#/components/schemas/DependencyStatus'
+        timestamp:
+          type: string
+          format: date-time
+    AuthTokensDto:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresIn:
+          type: integer
+    RegisterRequestDto:
+      type: object
+      required: [name, email, password, role]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        role:
+          $ref: '#/components/schemas/UserRole'
+        specialty:
+          type: string
+        crm:
+          type: string
+    LoginRequestDto:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    RefreshRequestDto:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+    LogoutRequestDto:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+    AuthResponseDto:
+      type: object
+      required: [user, tokens]
+      properties:
+        user:
+          $ref: '#/components/schemas/UserDto'
+        tokens:
+          $ref: '#/components/schemas/AuthTokensDto'
+    UserDto:
+      type: object
+      required: [id, name, email, role, specialty, crm, createdAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        specialty:
+          type: [string, 'null']
+        crm:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+    DoctorSummaryDto:
+      type: object
+      required: [id, name, specialty, crm]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        specialty:
+          type: [string, 'null']
+        crm:
+          type: [string, 'null']
+    CounterpartDto:
+      type: object
+      required: [id, name, role, specialty]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        specialty:
+          type: [string, 'null']
+    UpdateUserRequestDto:
+      type: object
+      properties:
+        name:
+          type: string
+        specialty:
+          type: string
+    SlotDto:
+      type: object
+      required: [startsAt, endsAt, doctorId]
+      properties:
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        doctorId:
+          type: string
+    PreConsultAnswerInputDto:
+      type: object
+      required: [questionKey, answer]
+      properties:
+        questionKey:
+          type: string
+        answer:
+          type: string
+    PreConsultAnswerDto:
+      type: object
+      required: [id, appointmentId, questionKey, answer, createdAt]
+      properties:
+        id:
+          type: string
+        appointmentId:
+          type: string
+        questionKey:
+          type: string
+        answer:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    CreateAppointmentRequestDto:
+      type: object
+      required: [doctorId, scheduledAt]
+      properties:
+        doctorId:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+        preConsult:
+          type: array
+          items:
+            $ref: '#/components/schemas/PreConsultAnswerInputDto'
+    RequestCodeResponseDto:
+      type: object
+      required: [appointmentId, expiresAt, attemptsRemaining]
+      properties:
+        appointmentId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        attemptsRemaining:
+          type: integer
+    VerifyCodeRequestDto:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+    AppointmentDto:
+      type: object
+      required: [id, patientId, doctorId, scheduledAt, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        patientId:
+          type: string
+        doctorId:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/AppointmentStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CalendarEntryDto:
+      type: object
+      required: [appointmentId, scheduledAt, status, counterpart, consultationId, isCurrent]
+      properties:
+        appointmentId:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/AppointmentStatus'
+        counterpart:
+          $ref: '#/components/schemas/CounterpartDto'
+        consultationId:
+          type: [string, 'null']
+        isCurrent:
+          type: boolean
+    DoctorAppointmentDto:
+      type: object
+      required: [appointmentId, scheduledAt, status, patient, consultationId, hasPreConsult]
+      properties:
+        appointmentId:
+          type: string
+        scheduledAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/AppointmentStatus'
+        patient:
+          $ref: '#/components/schemas/CounterpartDto'
+        consultationId:
+          type: [string, 'null']
+        hasPreConsult:
+          type: boolean
+    CancelAppointmentRequestDto:
+      type: object
+      properties:
+        reason:
+          type: string
+    PreConsultQuestionKey:
+      type: string
+      enum:
+        - chief_complaint
+        - symptom_duration
+        - current_medications
+        - allergies
+        - medical_history
+    IceServerDto:
+      type: object
+      required: [urls]
+      properties:
+        urls:
+          type: array
+          items:
+            type: string
+        username:
+          type: string
+        credential:
+          type: string
+    ParticipantDto:
+      type: object
+      required: [userId, role, joinedAt]
+      properties:
+        userId:
+          type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+        joinedAt:
+          type: [string, 'null']
+          format: date-time
+    StartConsultationResponseDto:
+      type: object
+      required:
+        [consultationId, appointmentId, status, startedAt, roomId, iceServers, participants]
+      properties:
+        consultationId:
+          type: string
+        appointmentId:
+          type: string
+        status:
+          $ref: '#/components/schemas/ConsultationStatus'
+        startedAt:
+          type: string
+          format: date-time
+        roomId:
+          type: string
+        iceServers:
+          type: array
+          items:
+            $ref: '#/components/schemas/IceServerDto'
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantDto'
+    ConsultationDto:
+      type: object
+      required: [id, appointmentId, status, startedAt, endedAt]
+      properties:
+        id:
+          type: string
+        appointmentId:
+          type: string
+        status:
+          $ref: '#/components/schemas/ConsultationStatus'
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: [string, 'null']
+          format: date-time
+    EndConsultationResponseDto:
+      type: object
+      required: [consultationId, appointmentId, status, startedAt, endedAt]
+      properties:
+        consultationId:
+          type: string
+        appointmentId:
+          type: string
+        status:
+          $ref: '#/components/schemas/ConsultationStatus'
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+    ConsultationHistoryItemDto:
+      type: object
+      required: [consultationId, appointmentId, startedAt, endedAt, doctor, diagnosis]
+      properties:
+        consultationId:
+          type: string
+        appointmentId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: [string, 'null']
+          format: date-time
+        doctor:
+          $ref: '#/components/schemas/CounterpartDto'
+        diagnosis:
+          type: [string, 'null']
+    CreateMedicalRecordRequestDto:
+      type: object
+      required: [consultationId, patientId, notes]
+      properties:
+        consultationId:
+          type: string
+        patientId:
+          type: string
+        notes:
+          type: string
+        diagnosis:
+          type: string
+        prescriptions:
+          type: array
+          items:
+            type: string
+    MedicalRecordDto:
+      type: object
+      required:
+        [id, patientId, consultationId, createdBy, notes, diagnosis, prescriptions, createdAt]
+      properties:
+        id:
+          type: string
+        patientId:
+          type: string
+        consultationId:
+          type: string
+        createdBy:
+          type: string
+        notes:
+          type: string
+        diagnosis:
+          type: [string, 'null']
+        prescriptions:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+    MedicalRecordSummaryDto:
+      type: object
+      required: [id, consultationId, createdAt, diagnosis]
+      properties:
+        id:
+          type: string
+        consultationId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        diagnosis:
+          type: [string, 'null']
+    PatientOverviewDto:
+      type: object
+      required: [patient, upcomingAppointment, history, preConsult]
+      properties:
+        patient:
+          $ref: '#/components/schemas/UserDto'
+        upcomingAppointment:
+          oneOf:
+            - $ref: '#/components/schemas/AppointmentDto'
+            - type: 'null'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/MedicalRecordSummaryDto'
+        preConsult:
+          type: array
+          items:
+            $ref: '#/components/schemas/PreConsultAnswerDto'
+    AttachmentDto:
+      type: object
+      required:
+        - id
+        - appointmentId
+        - consultationId
+        - uploaderId
+        - fileName
+        - contentType
+        - sizeBytes
+        - kind
+        - downloadUrl
+        - createdAt
+      properties:
+        id:
+          type: string
+        appointmentId:
+          type: string
+        consultationId:
+          type: [string, 'null']
+        uploaderId:
+          type: string
+        fileName:
+          type: string
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+        kind:
+          $ref: '#/components/schemas/AttachmentKind'
+        downloadUrl:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
