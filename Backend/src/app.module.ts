@@ -16,6 +16,7 @@ import { HealthModule } from './health/health.module';
 import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { RecordsModule } from './records/records.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     MailModule,
     RealtimeModule,
     ConsultationsModule,
+    RecordsModule,
   ],
   providers: [
     {

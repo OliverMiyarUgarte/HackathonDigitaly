@@ -11,6 +11,9 @@ All notable contract changes are documented here. The format follows
 - Optional `from`/`to` date-time filters on `GET /api/appointments/calendar`.
 - Optional `date` date-time filter on `GET /api/appointments/doctor`.
 - Optional `from`/`to` date-time filters on `GET /api/consultations/mine`.
+- Consultation history endpoint `GET /api/records/history` (`patientId`, `from`, `to`)
+  returning `ConsultationHistoryItemDto[]`; replaces the previously documented
+  `GET /api/records` summary listing.
 
 ## [0.1.0] - 2026-09-12
 

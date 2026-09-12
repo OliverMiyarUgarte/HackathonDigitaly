@@ -660,11 +660,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponseDto'
-  /api/records:
+  /api/records/history:
     get:
       tags: [records]
-      operationId: listMedicalRecords
-      summary: List medical record summaries
+      operationId: listConsultationHistory
+      summary: List consultation history for a patient
       security:
         - bearerAuth: []
       parameters:
@@ -673,19 +673,32 @@ paths:
           required: false
           schema:
             type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         '200':
-          description: Medical record summaries
+          description: Consultation history
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/MedicalRecordSummaryDto'
+                  $ref: '#/components/schemas/ConsultationHistoryItemDto'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/records:
     post:
       tags: [records]
       operationId: createMedicalRecord
