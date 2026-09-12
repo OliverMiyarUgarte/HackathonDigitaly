@@ -1,98 +1,117 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Digitaly Telemedicine API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS 11 service for the Digitaly telemedicine MVP. Owns authentication, scheduling,
+e-mail validation codes, consultations, medical records, attachments, WebSocket events,
+the audit trail and the proxy to the Python AI copilot.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+See the [root README](../README.md) for the product and architecture, and
+[`docs/operations.md`](../docs/operations.md) for operations, the production topology and
+LGPD. HTTP/WebSocket payloads live in [`../service-contracts`](../service-contracts).
 
-## Description
+## Prerequisites
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- Node.js 22+ and npm
+- Docker with Compose (for the tmp Postgres, MailHog and Adminer)
+- The `@telemed/service-contracts` package resolves via `file:../service-contracts`;
+  compiled types are committed under `service-contracts/dist`, so no monorepo build is
+  required for a fresh clone.
 
-## Project setup
+## Environment
 
 ```bash
-$ npm install
+cd Backend
+cp .env.example .env
+# replace JWT_SECRET, OTP_PEPPER and AI_INTERNAL_TOKEN with random values
 ```
 
-## Compile and run the project
+Never commit `.env`. The full variable list is in [`.env.example`](.env.example) and the
+root README. The API validates its environment with Joi at boot and refuses to start if a
+required secret is missing.
+
+## Database: migrate, seed, reset
+
+The tmp database runs on port **5433** from the host (`5432` in the container).
 
 ```bash
-# development
-$ npm run start
+docker compose -f docker-compose.yml up -d db mailhog adminer
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
+npm run db:migrate   # prisma migrate dev (development)
+npm run db:seed      # loads the fictional demo users and appointments
 ```
 
-## Run tests
+| Script | Purpose |
+| --- | --- |
+| `npm run db:migrate` | Create/apply a migration in development |
+| `npm run db:deploy` | Apply committed migrations (CI/staging/production) |
+| `npm run db:seed` | Run `prisma/seed.ts` (idempotent, fixed UUIDs) |
+| `npm run db:reset` | Drop, re-apply migrations and re-seed the demo state |
+| `npm run db:studio` | Prisma Studio |
+
+The seed creates fictional accounts only; the shared password is `Demo@1234`
+(`medico@`, `medico2@`, `paciente@`, `paciente2@digitaly.health`). Validation codes are
+delivered to MailHog at `http://localhost:8025`.
+
+## Run
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run start:dev     # watch mode, generates the Prisma client first
+npm run start         # nest start
+npm run build         # nest build (prebuild runs prisma generate)
+npm run start:prod    # node dist/main
 ```
 
-## Deployment
+Once running: Swagger at `http://localhost:3001/docs`, liveness at
+`http://localhost:3001/api/health`, readiness at `http://localhost:3001/api/ready`.
+Do not run `start:dev` while the containerized `api` service is up — both bind port 3001.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Test and quality
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run lint        # ESLint with --fix
+npm run typecheck   # tsc --noEmit (runs prisma generate first)
+npm test            # 22 unit suites / 151 tests, no database required
+npm run test:e2e    # 13 e2e suites / 78 tests, serial, needs PostgreSQL
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+`test:e2e` sets `ALLOW_DOCTOR_SELF_REGISTRATION=true` and uses `--runInBand` because the
+suites share the demo database. Start Postgres and apply migrations before running it.
 
-## Resources
+## Docker
 
-Check out a few resources that may come in handy when working with NestJS:
+The compose stack runs Postgres, MailHog, Adminer and the API. Migrations and seeds still
+run from the host because the runtime image ships production dependencies only (no Prisma
+CLI).
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```bash
+docker compose -f docker-compose.yml up -d --build
+```
 
-## Support
+The image is multi-stage and runs as the non-root `nestjs` user with a healthcheck on
+`/api/health`. Compose expects the AI copilot at `http://ai:8000`; without it, readiness
+reports `checks.ai: "down"` and `status: "degraded"` while the API keeps serving.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## Module map
 
-## Stay in touch
+| Module | Responsibility |
+| --- | --- |
+| `auth` | Register/login/refresh/logout, argon2id, JWT + rotating refresh tokens |
+| `users` | Profile, doctor directory, scoped patient lookup |
+| `appointments` | Slots, booking, OTP confirmation, calendars, agenda, pre-consult |
+| `consultations` | Start/end, WebRTC session setup, patient history |
+| `records` | Patient overview, pre-consult upsert, medical records |
+| `attachments` | Upload/list/download, local storage driver |
+| `realtime` | Socket.IO gateway, appointment/user rooms, presence, WebRTC signaling |
+| `ai` | HTTP/WS proxy to the Python copilot, doctor-only feedback relay |
+| `mail` | Nodemailer validation-code e-mails |
+| `health` | Liveness and readiness |
+| `common` | Guards, exception filter, interceptors, request context, audit |
+| `prisma` | PrismaService with the `@prisma/adapter-pg` driver adapter |
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## Contracts
 
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+DTO classes implement the types from `@telemed/service-contracts` and validate at the
+boundary with `class-validator`. When a payload changes, update the package
+(`types/`, `events/`, `http/openapi.yaml`, `python/contracts.py`) and the
+[`CHANGELOG.md`](../service-contracts/CHANGELOG.md) in the same change, then run
+`npm run typecheck` in both packages.
