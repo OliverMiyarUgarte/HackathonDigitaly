@@ -1,9 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { TerminusModule } from '@nestjs/terminus';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import * as Joi from 'joi';
+import { AuthModule } from './auth/auth.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 import { CorrelationIdInterceptor } from './common/interceptors/correlation-id.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { HealthModule } from './health/health.module';
@@ -20,9 +24,9 @@ import { PrismaModule } from './prisma/prisma.module';
         PORT: Joi.number().default(3001),
         DATABASE_URL: Joi.string().optional(),
         WEB_ORIGIN: Joi.string().default('http://localhost:3000'),
-        JWT_SECRET: Joi.string().optional(),
+        JWT_SECRET: Joi.string().required(),
         JWT_EXPIRES_IN: Joi.string().default('15m'),
-        JWT_REFRESH_SECRET: Joi.string().optional(),
+        JWT_REFRESH_SECRET: Joi.string().required(),
         JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
         MAIL_HOST: Joi.string().optional(),
         MAIL_PORT: Joi.number().optional(),
@@ -33,9 +37,11 @@ import { PrismaModule } from './prisma/prisma.module';
         UPLOAD_DIR: Joi.string().default('./uploads'),
       }),
     }),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     TerminusModule,
     PrismaModule,
     HealthModule,
+    AuthModule,
   ],
   providers: [
     {
@@ -49,6 +55,18 @@ import { PrismaModule } from './prisma/prisma.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })
