@@ -300,6 +300,19 @@ paths:
       summary: List calendar entries for the authenticated patient
       security:
         - bearerAuth: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         '200':
           description: Calendar entries
@@ -319,6 +332,12 @@ paths:
       security:
         - bearerAuth: []
       parameters:
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
         - name: status
           in: query
           required: false

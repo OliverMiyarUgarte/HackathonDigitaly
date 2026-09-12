@@ -4,6 +4,13 @@ All notable contract changes are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this package follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Optional `from`/`to` date-time filters on `GET /api/appointments/calendar`.
+- Optional `date` date-time filter on `GET /api/appointments/doctor`.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added
