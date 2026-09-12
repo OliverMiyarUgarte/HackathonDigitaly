@@ -11,6 +11,10 @@ import type {
   UserDto,
 } from '@telemed/service-contracts';
 import { argon2id, hash, verify } from 'argon2';
+import {
+  AuditService,
+  UNKNOWN_RESOURCE_ID,
+} from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { Prisma, type User } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -26,6 +30,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly tokenService: TokenService,
     private readonly configService: ConfigService,
+    private readonly auditService: AuditService,
   ) {}
 
   async register(dto: RegisterRequestDto): Promise<AuthResponseDto> {
@@ -73,15 +78,37 @@ export class AuthService {
     const email = dto.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user || user.deletedAt) {
+      await this.auditService.record({
+        actorId: null,
+        action: 'auth.login',
+        resourceType: 'user',
+        resourceId: UNKNOWN_RESOURCE_ID,
+        outcome: 'denied',
+      });
       throw this.invalidCredentials();
     }
 
     const matches = await this.verifyPassword(user.passwordHash, dto.password);
     if (!matches) {
+      await this.auditService.record({
+        actorId: null,
+        action: 'auth.login',
+        resourceType: 'user',
+        resourceId: user.id,
+        outcome: 'denied',
+      });
       throw this.invalidCredentials();
     }
 
-    return this.createSession(user);
+    const session = await this.createSession(user);
+    await this.auditService.record({
+      actorId: user.id,
+      action: 'auth.login',
+      resourceType: 'user',
+      resourceId: user.id,
+      outcome: 'success',
+    });
+    return session;
   }
 
   async refresh(dto: RefreshRequestDto): Promise<AuthTokensDto> {
@@ -94,6 +121,13 @@ export class AuthService {
     }
 
     if (stored.revokedAt) {
+      await this.auditService.record({
+        actorId: stored.userId,
+        action: 'auth.refresh.reuse_detected',
+        resourceType: 'user',
+        resourceId: stored.userId,
+        outcome: 'denied',
+      });
       await this.revokeAllActiveTokens(stored.userId);
       throw this.invalidRefreshToken();
     }
@@ -129,6 +163,13 @@ export class AuthService {
     });
 
     if (!rotated) {
+      await this.auditService.record({
+        actorId: stored.userId,
+        action: 'auth.refresh.reuse_detected',
+        resourceType: 'user',
+        resourceId: stored.userId,
+        outcome: 'denied',
+      });
       await this.revokeAllActiveTokens(stored.userId);
       throw this.invalidRefreshToken();
     }
@@ -141,9 +182,19 @@ export class AuthService {
       return;
     }
     const tokenHash = this.tokenService.hashRefreshToken(dto.refreshToken);
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+    });
     await this.prisma.refreshToken.updateMany({
       where: { tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
+    });
+    await this.auditService.record({
+      actorId: stored?.userId ?? null,
+      action: 'auth.logout',
+      resourceType: 'user',
+      resourceId: stored?.userId ?? UNKNOWN_RESOURCE_ID,
+      outcome: 'success',
     });
   }
 

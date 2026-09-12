@@ -10,6 +10,7 @@ import type { AttachmentDto, AttachmentKind } from '@telemed/service-contracts';
 import { randomUUID } from 'node:crypto';
 import type { ReadStream } from 'node:fs';
 import { AppointmentAccessService } from '../appointments/appointment-access.service';
+import { AuditService } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import type { Attachment } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -42,6 +43,7 @@ export class AttachmentsService {
     private readonly accessService: AppointmentAccessService,
     private readonly storage: StorageService,
     private readonly configService: ConfigService,
+    private readonly auditService: AuditService,
   ) {}
 
   async upload(
@@ -96,6 +98,13 @@ export class AttachmentsService {
           storageKey,
         },
       });
+      await this.auditService.record({
+        actorId: user.sub,
+        action: 'attachment.upload',
+        resourceType: 'attachment',
+        resourceId: attachment.id,
+        outcome: 'success',
+      });
       return toAttachmentDto(attachment);
     } catch (error) {
       await this.storage.remove(storageKey);
@@ -134,6 +143,14 @@ export class AttachmentsService {
     if (!(await this.storage.exists(attachment.storageKey))) {
       throw this.notFound('Attachment file not found');
     }
+
+    await this.auditService.record({
+      actorId: user.sub,
+      action: 'attachment.download',
+      resourceType: 'attachment',
+      resourceId: attachment.id,
+      outcome: 'success',
+    });
 
     return {
       attachment: toAttachmentDto(attachment),

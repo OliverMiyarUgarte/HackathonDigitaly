@@ -1,6 +1,7 @@
 import { HttpException, Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
+import type { AuditService } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import type { Appointment, ValidationCode } from '../generated/prisma/client';
 import type { MailService } from '../mail/mail.service';
@@ -67,6 +68,16 @@ interface MailMock {
 interface ConfigMock {
   getOrThrow: jest.Mock<string, [string]>;
   get: jest.Mock<number, [string, number]>;
+}
+
+interface AuditMock {
+  record: jest.Mock<Promise<void>, [unknown]>;
+}
+
+function createAuditMock(): AuditMock {
+  return {
+    record: jest.fn<Promise<void>, [unknown]>(() => Promise.resolve()),
+  };
 }
 
 interface ValidationCodeCreateCall {
@@ -181,17 +192,20 @@ describe('ValidationCodeService', () => {
   let access: AccessMock;
   let mail: MailMock;
   let config: ConfigMock;
+  let audit: AuditMock;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     access = createAccessMock();
     mail = createMailMock();
     config = createConfigMock();
+    audit = createAuditMock();
     service = new ValidationCodeService(
       prisma as unknown as PrismaService,
       access as unknown as AppointmentAccessService,
       mail as unknown as MailService,
       config as unknown as ConfigService,
+      audit as unknown as AuditService,
     );
   });
 
@@ -281,7 +295,7 @@ describe('ValidationCodeService', () => {
   });
 
   describe('verify', () => {
-    it('confirms the appointment with the correct code and writes an audit log', async () => {
+    it('confirms the appointment with the correct code and writes audit entries', async () => {
       const code = await issueCode();
       access.assertAppointmentAccess.mockResolvedValue(buildAppointment());
       prisma.validationCode.findFirst.mockResolvedValue(
@@ -292,7 +306,6 @@ describe('ValidationCodeService', () => {
       });
       prisma.validationCode.updateMany.mockResolvedValue({ count: 1 });
       prisma.appointment.updateMany.mockResolvedValue({ count: 1 });
-      prisma.auditLog.create.mockResolvedValue({ id: 'audit-1' });
       prisma.appointment.findUnique.mockResolvedValue(
         buildAppointment({ status: 'confirmed' }),
       );
@@ -308,17 +321,21 @@ describe('ValidationCodeService', () => {
         where: { id: 'appointment-1', status: 'pending_code' },
         data: { status: 'confirmed' },
       });
-      expect(prisma.auditLog.create).toHaveBeenCalledWith({
-        data: {
-          actorId: PATIENT.sub,
-          action: 'appointment.confirmed',
-          resourceType: 'appointment',
-          resourceId: 'appointment-1',
-        },
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: PATIENT.sub,
+        action: 'appointment.confirm',
+        resourceType: 'appointment',
+        resourceId: 'appointment-1',
+        outcome: 'success',
       });
-      expect(JSON.stringify(prisma.auditLog.create.mock.calls)).not.toContain(
-        code,
-      );
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: PATIENT.sub,
+        action: 'appointment.code.verify',
+        resourceType: 'appointment',
+        resourceId: 'appointment-1',
+        outcome: 'success',
+      });
+      expect(JSON.stringify(audit.record.mock.calls)).not.toContain(code);
     });
 
     it('rejects a wrong code, increments attempts, and keeps the appointment pending', async () => {

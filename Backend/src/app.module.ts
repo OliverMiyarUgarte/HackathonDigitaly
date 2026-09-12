@@ -8,6 +8,8 @@ import { AiModule } from './ai/ai.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { AuthModule } from './auth/auth.module';
+import { AuditModule } from './common/audit/audit.module';
+import { RequestContextModule } from './common/context/request-context.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -61,6 +63,8 @@ import { UsersModule } from './users/users.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     TerminusModule,
     PrismaModule,
+    RequestContextModule,
+    AuditModule,
     HealthModule,
     AuthModule,
     AiModule,

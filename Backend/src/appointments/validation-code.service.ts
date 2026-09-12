@@ -12,6 +12,7 @@ import type {
   RequestCodeResponseDto,
 } from '@telemed/service-contracts';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import { AuditService, type AuditOutcome } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,6 +36,7 @@ export class ValidationCodeService {
     private readonly accessService: AppointmentAccessService,
     private readonly mailService: MailService,
     configService: ConfigService,
+    private readonly auditService: AuditService,
   ) {
     this.pepper = configService.getOrThrow<string>('OTP_PEPPER');
     this.ttlSeconds = configService.get<number>(
@@ -79,6 +81,7 @@ export class ValidationCodeService {
       orderBy: { createdAt: 'desc' },
     });
     if (!code || code.consumedAt || code.expiresAt.getTime() <= Date.now()) {
+      await this.recordVerify(patient, appointmentId, 'denied');
       throw this.invalidCode();
     }
 
@@ -87,6 +90,7 @@ export class ValidationCodeService {
       _sum: { attempts: true },
     });
     if ((attempts._sum.attempts ?? 0) >= this.maxAttempts) {
+      await this.recordVerify(patient, appointmentId, 'denied');
       throw this.tooManyAttempts();
     }
 
@@ -96,10 +100,13 @@ export class ValidationCodeService {
         where: { id: code.id },
         data: { attempts: { increment: 1 } },
       });
+      await this.recordVerify(patient, appointmentId, 'denied');
       throw this.invalidCode();
     }
 
-    return this.confirm(patient, appointmentId, code.id);
+    const confirmed = await this.confirm(patient, appointmentId, code.id);
+    await this.recordVerify(patient, appointmentId, 'success');
+    return confirmed;
   }
 
   private async issue(
@@ -150,6 +157,14 @@ export class ValidationCodeService {
       Math.max(1, Math.ceil(this.ttlSeconds / 60)),
     );
 
+    await this.auditService.record({
+      actorId: patient.sub,
+      action: 'appointment.code.request',
+      resourceType: 'appointment',
+      resourceId: appointmentId,
+      outcome: 'success',
+    });
+
     return {
       appointmentId,
       expiresAt: expiresAt.toISOString(),
@@ -179,15 +194,6 @@ export class ValidationCodeService {
         throw this.conflict();
       }
 
-      await tx.auditLog.create({
-        data: {
-          actorId: patient.sub,
-          action: 'appointment.confirmed',
-          resourceType: 'appointment',
-          resourceId: appointmentId,
-        },
-      });
-
       const confirmed = await tx.appointment.findUnique({
         where: { id: appointmentId },
       });
@@ -200,7 +206,29 @@ export class ValidationCodeService {
       return confirmed;
     });
 
+    await this.auditService.record({
+      actorId: patient.sub,
+      action: 'appointment.confirm',
+      resourceType: 'appointment',
+      resourceId: appointmentId,
+      outcome: 'success',
+    });
+
     return toAppointmentDto(appointment);
+  }
+
+  private recordVerify(
+    patient: AuthenticatedUser,
+    appointmentId: string,
+    outcome: AuditOutcome,
+  ): Promise<void> {
+    return this.auditService.record({
+      actorId: patient.sub,
+      action: 'appointment.code.verify',
+      resourceType: 'appointment',
+      resourceId: appointmentId,
+      outcome,
+    });
   }
 
   private generateCode(): string {

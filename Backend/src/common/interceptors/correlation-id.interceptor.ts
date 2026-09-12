@@ -6,11 +6,15 @@ import type {
 import { Injectable } from '@nestjs/common';
 import type { Response } from 'express';
 import { randomUUID } from 'node:crypto';
-import type { Observable } from 'rxjs';
+import { Observable } from 'rxjs';
+import type { Subscription } from 'rxjs';
+import { RequestContextService } from '../context/request-context.service';
 import type { RequestWithContext } from '../types/request-with-context';
 
 @Injectable()
 export class CorrelationIdInterceptor implements NestInterceptor {
+  constructor(private readonly requestContext: RequestContextService) {}
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const http = context.switchToHttp();
     const request = http.getRequest<RequestWithContext>();
@@ -25,6 +29,16 @@ export class CorrelationIdInterceptor implements NestInterceptor {
     request.correlationId = correlationId;
     response.setHeader('x-correlation-id', correlationId);
 
-    return next.handle();
+    const userId = request.user?.sub;
+    return new Observable((subscriber) => {
+      let subscription: Subscription | undefined;
+      this.requestContext.run(
+        userId ? { correlationId, userId } : { correlationId },
+        () => {
+          subscription = next.handle().subscribe(subscriber);
+        },
+      );
+      return () => subscription?.unsubscribe();
+    });
   }
 }

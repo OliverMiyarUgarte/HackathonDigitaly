@@ -16,6 +16,7 @@ import {
   type PreConsultQuestionKey,
   type UserDto,
 } from '@telemed/service-contracts';
+import { AuditService } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import type {
   MedicalRecord,
@@ -53,6 +54,7 @@ export class RecordsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessService: AppointmentAccessService,
+    private readonly auditService: AuditService,
   ) {}
 
   async getPreConsult(
@@ -155,6 +157,14 @@ export class RecordsService {
         })
       : [];
 
+    await this.auditService.record({
+      actorId: user.sub,
+      action: 'patient.overview.read',
+      resourceType: 'patient',
+      resourceId: patientId,
+      outcome: 'success',
+    });
+
     return {
       patient: toUserDto(patient),
       upcomingAppointment: upcomingAppointment
@@ -200,6 +210,14 @@ export class RecordsService {
       orderBy: { startedAt: 'desc' },
     });
 
+    await this.auditService.record({
+      actorId: user.sub,
+      action: 'consultation.history.read',
+      resourceType: 'consultation_history',
+      resourceId: patientId ?? user.sub,
+      outcome: 'success',
+    });
+
     return consultations.map(toConsultationHistoryItem);
   }
 
@@ -240,6 +258,13 @@ export class RecordsService {
           prescriptions: dto.prescriptions ?? [],
         },
       });
+      await this.auditService.record({
+        actorId: doctor.sub,
+        action: 'medical_record.create',
+        resourceType: 'medical_record',
+        resourceId: record.id,
+        outcome: 'success',
+      });
       return toMedicalRecordDto(record);
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -267,6 +292,14 @@ export class RecordsService {
     } else {
       await this.accessService.assertPatientAccess(user, record.patientId);
     }
+
+    await this.auditService.record({
+      actorId: user.sub,
+      action: 'medical_record.read',
+      resourceType: 'medical_record',
+      resourceId: record.id,
+      outcome: 'success',
+    });
 
     return toMedicalRecordDto(record);
   }

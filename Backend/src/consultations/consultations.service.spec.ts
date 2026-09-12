@@ -1,5 +1,6 @@
 import { HttpException } from '@nestjs/common';
 import type { AiProxyService } from '../ai/ai-proxy.service';
+import type { AuditService } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import type { Appointment, Consultation } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -41,6 +42,16 @@ interface RealtimeMock {
 interface AiProxyMock {
   openSession: jest.Mock;
   closeSession: jest.Mock;
+}
+
+interface AuditMock {
+  record: jest.Mock<Promise<void>, [unknown]>;
+}
+
+function createAuditMock(): AuditMock {
+  return {
+    record: jest.fn<Promise<void>, [unknown]>(() => Promise.resolve()),
+  };
 }
 
 function createPrismaMock(): PrismaMock {
@@ -126,11 +137,13 @@ describe('ConsultationsService', () => {
   let prisma: PrismaMock;
   let realtime: RealtimeMock;
   let aiProxy: AiProxyMock;
+  let audit: AuditMock;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     realtime = createRealtimeMock();
     aiProxy = createAiProxyMock();
+    audit = createAuditMock();
     realtime.appointmentRoom.mockImplementation(
       (appointmentId: string) => `appointment:${appointmentId}`,
     );
@@ -142,6 +155,7 @@ describe('ConsultationsService', () => {
       prisma as unknown as PrismaService,
       realtime as unknown as RealtimeService,
       aiProxy as unknown as AiProxyService,
+      audit as unknown as AuditService,
     );
   });
 
@@ -282,6 +296,13 @@ describe('ConsultationsService', () => {
         appointmentId: 'appointment-1',
         doctorId: DOCTOR.sub,
       });
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: DOCTOR.sub,
+        action: 'consultation.start',
+        resourceType: 'consultation',
+        resourceId: 'consultation-new',
+        outcome: 'success',
+      });
     });
   });
 
@@ -347,6 +368,13 @@ describe('ConsultationsService', () => {
         }),
       );
       expect(aiProxy.closeSession).toHaveBeenCalledWith('consultation-1');
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: DOCTOR.sub,
+        action: 'consultation.end',
+        resourceType: 'consultation',
+        resourceId: 'consultation-1',
+        outcome: 'success',
+      });
     });
   });
 });

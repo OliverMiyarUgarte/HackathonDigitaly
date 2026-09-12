@@ -4,6 +4,7 @@ import type { AttachmentKind } from '@telemed/service-contracts';
 import { Readable } from 'node:stream';
 import type { ReadStream } from 'node:fs';
 import type { AppointmentAccessService } from '../appointments/appointment-access.service';
+import type { AuditService } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import type { Appointment, Attachment } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -60,6 +61,16 @@ interface StorageMock {
 
 interface ConfigMock {
   get: jest.Mock<number, [string, number?]>;
+}
+
+interface AuditMock {
+  record: jest.Mock<Promise<void>, [unknown]>;
+}
+
+function createAuditMock(): AuditMock {
+  return {
+    record: jest.fn<Promise<void>, [unknown]>(() => Promise.resolve()),
+  };
 }
 
 function createPrismaMock(): PrismaMock {
@@ -175,17 +186,20 @@ describe('AttachmentsService', () => {
   let access: AccessMock;
   let storage: StorageMock;
   let config: ConfigMock;
+  let audit: AuditMock;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     access = createAccessMock();
     storage = createStorageMock();
     config = createConfigMock();
+    audit = createAuditMock();
     service = new AttachmentsService(
       prisma as unknown as PrismaService,
       access as unknown as AppointmentAccessService,
       storage,
       config as unknown as ConfigService,
+      audit as unknown as AuditService,
     );
     access.assertAppointmentAccess.mockResolvedValue(buildAppointment());
     storage.save.mockResolvedValue(undefined);
@@ -373,6 +387,13 @@ describe('AttachmentsService', () => {
       expect(storage.exists).toHaveBeenCalledWith(
         '11111111-1111-4111-8111-111111111111.pdf',
       );
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: PATIENT.sub,
+        action: 'attachment.download',
+        resourceType: 'attachment',
+        resourceId: 'attachment-1',
+        outcome: 'success',
+      });
     });
   });
 });

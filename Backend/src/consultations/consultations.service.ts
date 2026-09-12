@@ -12,6 +12,7 @@ import type {
   StartConsultationResponseDto,
 } from '@telemed/service-contracts';
 import { AiProxyService } from '../ai/ai-proxy.service';
+import { AuditService } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import type {
   Appointment,
@@ -32,6 +33,7 @@ export class ConsultationsService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly aiProxy: AiProxyService,
+    private readonly auditService: AuditService,
   ) {}
 
   async start(
@@ -100,6 +102,14 @@ export class ConsultationsService {
       doctorId: appointment.doctorId,
     });
 
+    await this.auditService.record({
+      actorId: doctor.sub,
+      action: 'consultation.start',
+      resourceType: 'consultation',
+      resourceId: consultationId,
+      outcome: 'success',
+    });
+
     return {
       consultationId,
       appointmentId,
@@ -156,6 +166,14 @@ export class ConsultationsService {
     );
 
     this.aiProxy.closeSession(consultationId);
+
+    await this.auditService.record({
+      actorId: doctor.sub,
+      action: 'consultation.end',
+      resourceType: 'consultation',
+      resourceId: consultationId,
+      outcome: 'success',
+    });
 
     return {
       consultationId,

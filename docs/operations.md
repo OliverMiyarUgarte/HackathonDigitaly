@@ -136,11 +136,11 @@ Key points:
 ## 4. Observability
 
 **Structured logs + correlation id.** Every request gets an `x-correlation-id`
-(`CorrelationIdInterceptor`); the same id is returned to the client and should be
-propagated to the AI service and included in every log line and audit entry. Log JSON in
-production so it can be shipped to the log platform. `LoggingInterceptor` records method,
-path, status, latency and actor id. Never log PII, tokens, validation codes or
-transcripts.
+(`CorrelationIdInterceptor`); the same id is returned to the client, is available to the
+request through `RequestContextService` (`AsyncLocalStorage`) and is included in every
+audit entry. It should also be propagated to the AI service. Log JSON in production so it
+can be shipped to the log platform. `LoggingInterceptor` records method, path, status,
+latency and actor id. Never log PII, tokens, validation codes or transcripts.
 
 **Liveness vs readiness.**
 
@@ -166,8 +166,37 @@ correlation id as baggage, and export to the tracing backend. Send exceptions to
 with the correlation id attached. Dashboards and alerts are built from the metrics above
 (readiness failures, error budget burn, socket drops, STT lag spikes).
 
-**Audit.** Access to patient records and attachments writes an `audit_logs` row
-(actor, action, resource, timestamp) for LGPD accountability.
+**Audit.** Sensitive PHI access and authentication events write one `audit_logs` row per
+event through `AuditService` (actor, action, resource type/id, timestamp). The actor is
+the authenticated user id and resource ids are UUIDs; an unauthenticated failure uses the
+nil UUID `00000000-0000-0000-0000-000000000000` and no actor. `metadata` holds only the
+`outcome` (`success`/`denied`) and the request `correlationId`. The service never accepts
+or stores notes, answers, diagnoses, prescriptions, e-mails, tokens or validation codes:
+it drops sensitive metadata keys, e-mail-like values and over-long strings, and it
+swallows write failures after logging the constant message `Audit log write failed`, so
+auditing can never break a consultation.
+
+Actions are lower-case, dot-separated and follow the convention
+`<domain>.<entity>.<verb>`; the `resourceType` is shown in parentheses:
+
+- `auth.login`, `auth.logout`, `auth.refresh.reuse_detected` (`user`)
+- `appointment.create`, `appointment.confirm`, `appointment.cancel`,
+  `appointment.code.request`, `appointment.code.verify` (`appointment`)
+- `consultation.start`, `consultation.end` (`consultation`)
+- `medical_record.create`, `medical_record.read` (`medical_record`)
+- `patient.overview.read` (`patient`)
+- `consultation.history.read` (`consultation_history`)
+- `attachment.upload`, `attachment.download` (`attachment`)
+
+`outcome` is `denied` for rejected logins, detected refresh-token reuse and rejected
+validation codes; every other event is `success`. A successful code verification writes
+`appointment.code.verify` and the resulting `appointment.confirm` as two distinct events.
+
+Retention: audit rows contain no PHI, so they follow the accountability window (keep for
+at least the applicable medical-record retention period, for example 5 years) and may
+outlive the record they describe; they are append-only and never edited or deleted
+through the API. The current implementation only writes and reads audit rows; the
+automated retention/partition job is still to be added.
 
 ## 5. Secrets management
 

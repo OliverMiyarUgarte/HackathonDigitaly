@@ -1,4 +1,5 @@
 import { HttpException } from '@nestjs/common';
+import type { AuditService } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import type {
   Appointment,
@@ -57,6 +58,16 @@ interface PrismaMock {
 interface AccessMock {
   assertAppointmentAccess: jest.Mock;
   assertPatientAccess: jest.Mock;
+}
+
+interface AuditMock {
+  record: jest.Mock<Promise<void>, [unknown]>;
+}
+
+function createAuditMock(): AuditMock {
+  return {
+    record: jest.fn<Promise<void>, [unknown]>(() => Promise.resolve()),
+  };
 }
 
 function createPrismaMock(): PrismaMock {
@@ -178,13 +189,16 @@ describe('RecordsService', () => {
   let service: RecordsService;
   let prisma: PrismaMock;
   let access: AccessMock;
+  let audit: AuditMock;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     access = createAccessMock();
+    audit = createAuditMock();
     service = new RecordsService(
       prisma as unknown as PrismaService,
       access as unknown as AppointmentAccessService,
+      audit as unknown as AuditService,
     );
   });
 
@@ -249,6 +263,30 @@ describe('RecordsService', () => {
 
       expect(error.getStatus()).toBe(403);
       expect(error.getResponse()).toMatchObject({ errorCode: 'FORBIDDEN' });
+    });
+
+    it('creates the record and records a medical_record.create audit entry', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({
+        ...buildConsultation(),
+        appointment: { doctorId: DOCTOR.sub, patientId: PATIENT.sub },
+      });
+      prisma.medicalRecord.findUnique.mockResolvedValue(null);
+      prisma.medicalRecord.create.mockResolvedValue(buildRecord());
+
+      const result = await service.create(DOCTOR, {
+        consultationId: 'consultation-1',
+        patientId: PATIENT.sub,
+        notes: 'Notas',
+      });
+
+      expect(result.id).toBe('record-1');
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: DOCTOR.sub,
+        action: 'medical_record.create',
+        resourceType: 'medical_record',
+        resourceId: 'record-1',
+        outcome: 'success',
+      });
     });
   });
 
@@ -330,6 +368,21 @@ describe('RecordsService', () => {
       expect(error.getStatus()).toBe(404);
       expect(error.getResponse()).toMatchObject({ errorCode: 'NOT_FOUND' });
     });
+
+    it('returns the record and records a medical_record.read audit entry', async () => {
+      prisma.medicalRecord.findUnique.mockResolvedValue(buildRecord());
+
+      const record = await service.findOne(PATIENT, 'record-1');
+
+      expect(record.id).toBe('record-1');
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: PATIENT.sub,
+        action: 'medical_record.read',
+        resourceType: 'medical_record',
+        resourceId: 'record-1',
+        outcome: 'success',
+      });
+    });
   });
 
   describe('getPatientOverview', () => {
@@ -369,6 +422,13 @@ describe('RecordsService', () => {
         DOCTOR,
         PATIENT.sub,
       );
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: DOCTOR.sub,
+        action: 'patient.overview.read',
+        resourceType: 'patient',
+        resourceId: PATIENT.sub,
+        outcome: 'success',
+      });
     });
 
     it('forbids a patient from reading another patient overview with 403', async () => {
@@ -396,6 +456,13 @@ describe('RecordsService', () => {
           medicalRecord: { select: { diagnosis: true } },
         },
         orderBy: { startedAt: 'desc' },
+      });
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: DOCTOR.sub,
+        action: 'consultation.history.read',
+        resourceType: 'consultation_history',
+        resourceId: DOCTOR.sub,
+        outcome: 'success',
       });
     });
 

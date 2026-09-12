@@ -1,4 +1,5 @@
 import { HttpException } from '@nestjs/common';
+import type { AuditService } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import {
   Prisma,
@@ -43,6 +44,16 @@ interface PrismaMock {
 interface AccessMock {
   assertAppointmentAccess: jest.Mock;
   assertPatientAccess: jest.Mock;
+}
+
+interface AuditMock {
+  record: jest.Mock<Promise<void>, [unknown]>;
+}
+
+function createAuditMock(): AuditMock {
+  return {
+    record: jest.fn<Promise<void>, [unknown]>(() => Promise.resolve()),
+  };
 }
 
 function createPrismaMock(): PrismaMock {
@@ -148,13 +159,16 @@ describe('AppointmentsService', () => {
   let service: AppointmentsService;
   let prisma: PrismaMock;
   let access: AccessMock;
+  let audit: AuditMock;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     access = createAccessMock();
+    audit = createAuditMock();
     service = new AppointmentsService(
       prisma as unknown as PrismaService,
       access as unknown as AppointmentAccessService,
+      audit as unknown as AuditService,
     );
   });
 
@@ -322,6 +336,13 @@ describe('AppointmentsService', () => {
           answer: 'Palpitacoes',
         },
       });
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: PATIENT.sub,
+        action: 'appointment.create',
+        resourceType: 'appointment',
+        resourceId: 'appointment-1',
+        outcome: 'success',
+      });
     });
   });
 
@@ -387,6 +408,13 @@ describe('AppointmentsService', () => {
           patientId: PATIENT.sub,
         },
         data: { status: 'cancelled', cancelReason: 'Imprevisto' },
+      });
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: PATIENT.sub,
+        action: 'appointment.cancel',
+        resourceType: 'appointment',
+        resourceId: 'appointment-1',
+        outcome: 'success',
       });
     });
   });

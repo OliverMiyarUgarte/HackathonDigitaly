@@ -11,6 +11,7 @@ import type {
   CounterpartDto,
   DoctorAppointmentDto,
 } from '@telemed/service-contracts';
+import { AuditService } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import {
   Prisma,
@@ -44,6 +45,7 @@ export class AppointmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessService: AppointmentAccessService,
+    private readonly auditService: AuditService,
   ) {}
 
   async create(
@@ -54,7 +56,7 @@ export class AppointmentsService {
     this.assertBookable(scheduledAt);
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const appointment = await this.prisma.$transaction(async (tx) => {
         const doctor = await tx.user.findFirst({
           where: { id: dto.doctorId, role: 'doctor', deletedAt: null },
           select: { id: true },
@@ -119,6 +121,15 @@ export class AppointmentsService {
 
         return toAppointmentDto(created);
       });
+
+      await this.auditService.record({
+        actorId: patient.sub,
+        action: 'appointment.create',
+        resourceType: 'appointment',
+        resourceId: appointment.id,
+        outcome: 'success',
+      });
+      return appointment;
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         throw this.slotTaken();
@@ -220,6 +231,13 @@ export class AppointmentsService {
         message: 'Appointment not found',
       });
     }
+    await this.auditService.record({
+      actorId: user.sub,
+      action: 'appointment.cancel',
+      resourceType: 'appointment',
+      resourceId: id,
+      outcome: 'success',
+    });
     return toAppointmentDto(updated);
   }
 

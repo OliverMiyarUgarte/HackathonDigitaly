@@ -2,6 +2,10 @@ import { ConflictException, HttpException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { argon2id, hash } from 'argon2';
 import type { AuthTokensDto } from '@telemed/service-contracts';
+import {
+  UNKNOWN_RESOURCE_ID,
+  type AuditService,
+} from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import {
   Prisma,
@@ -43,6 +47,16 @@ interface TokenServiceMock {
 
 interface ConfigMock {
   get: jest.Mock<boolean, [string, boolean]>;
+}
+
+interface AuditMock {
+  record: jest.Mock<Promise<void>, [unknown]>;
+}
+
+function createAuditMock(): AuditMock {
+  return {
+    record: jest.fn<Promise<void>, [unknown]>(() => Promise.resolve()),
+  };
 }
 
 function buildUser(overrides: Partial<User> = {}): User {
@@ -154,15 +168,18 @@ describe('AuthService', () => {
   let prisma: PrismaMock;
   let tokenService: TokenServiceMock;
   let config: ConfigMock;
+  let audit: AuditMock;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     tokenService = createTokenServiceMock();
     config = createConfigMock();
+    audit = createAuditMock();
     service = new AuthService(
       prisma as unknown as PrismaService,
       tokenService as unknown as TokenService,
       config as unknown as ConfigService,
+      audit as unknown as AuditService,
     );
     tokenService.issueTokens.mockResolvedValue(buildIssued());
     tokenService.hashRefreshToken.mockReturnValue('stored-hash');
@@ -295,6 +312,13 @@ describe('AuthService', () => {
         errorCode: 'INVALID_CREDENTIALS',
         message: 'Invalid email or password',
       });
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: null,
+        action: 'auth.login',
+        resourceType: 'user',
+        resourceId: UNKNOWN_RESOURCE_ID,
+        outcome: 'denied',
+      });
     });
 
     it('rejects a wrong password with a generic 401', async () => {
@@ -313,6 +337,37 @@ describe('AuthService', () => {
         errorCode: 'INVALID_CREDENTIALS',
         message: 'Invalid email or password',
       });
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: null,
+        action: 'auth.login',
+        resourceType: 'user',
+        resourceId: 'user-1',
+        outcome: 'denied',
+      });
+    });
+
+    it('logs in and records an audit entry without tokens or e-mail', async () => {
+      const passwordHash = await hash('CorrectPassword123', { type: argon2id });
+      prisma.user.findUnique.mockResolvedValue(buildUser({ passwordHash }));
+      prisma.refreshToken.create.mockResolvedValue(buildRefreshToken());
+
+      const result = await service.login({
+        email: 'Patient@Example.com',
+        password: 'CorrectPassword123',
+      } satisfies LoginRequestDto);
+
+      expect(result.user.email).toBe('patient@example.test');
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: 'user-1',
+        action: 'auth.login',
+        resourceType: 'user',
+        resourceId: 'user-1',
+        outcome: 'success',
+      });
+      const recorded = JSON.stringify(audit.record.mock.calls);
+      expect(recorded).not.toContain('CorrectPassword123');
+      expect(recorded).not.toContain('patient@example.test');
+      expect(recorded).not.toContain('refresh-token');
     });
   });
 
