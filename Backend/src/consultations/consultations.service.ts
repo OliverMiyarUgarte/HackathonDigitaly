@@ -11,6 +11,7 @@ import type {
   EndConsultationResponseDto,
   StartConsultationResponseDto,
 } from '@telemed/service-contracts';
+import { AiProxyService } from '../ai/ai-proxy.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import type {
   Appointment,
@@ -30,6 +31,7 @@ export class ConsultationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly aiProxy: AiProxyService,
   ) {}
 
   async start(
@@ -92,6 +94,12 @@ export class ConsultationsService {
       startedAt: startedAt.toISOString(),
     });
 
+    void this.aiProxy.openSession({
+      consultationId,
+      appointmentId,
+      doctorId: appointment.doctorId,
+    });
+
     return {
       consultationId,
       appointmentId,
@@ -146,6 +154,8 @@ export class ConsultationsService {
         endedAt: endedAt.toISOString(),
       },
     );
+
+    this.aiProxy.closeSession(consultationId);
 
     return {
       consultationId,

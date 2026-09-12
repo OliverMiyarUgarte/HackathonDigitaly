@@ -20,6 +20,7 @@ import type {
 import type { Namespace, Socket } from 'socket.io';
 import { AppointmentAccessService } from '../appointments/appointment-access.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
+import type { AudioChunkFrame, AudioEndFrame } from './audio-frame-handler';
 import { RealtimeService } from './realtime.service';
 
 export type RealtimeSocket = Socket<
@@ -313,6 +314,34 @@ export class RealtimeGateway
       });
   }
 
+  @SubscribeMessage('audio.chunk')
+  async handleAudioChunk(
+    @ConnectedSocket() client: RealtimeSocket,
+    @MessageBody() payload: unknown,
+  ): Promise<void> {
+    const user = client.data.user;
+    const frame = this.parseAudioChunk(payload);
+    const handler = this.realtimeService.getAudioFrameHandler();
+    if (!user || !frame || !handler) {
+      return;
+    }
+    await handler.handleAudioChunk(user, frame);
+  }
+
+  @SubscribeMessage('audio.end')
+  async handleAudioEnd(
+    @ConnectedSocket() client: RealtimeSocket,
+    @MessageBody() payload: unknown,
+  ): Promise<void> {
+    const user = client.data.user;
+    const frame = this.parseAudioEnd(payload);
+    const handler = this.realtimeService.getAudioFrameHandler();
+    if (!user || !frame || !handler) {
+      return;
+    }
+    await handler.handleAudioEnd(user, frame);
+  }
+
   private isInRoom(client: RealtimeSocket, appointmentId: string): boolean {
     if (!client.data.user) {
       return false;
@@ -416,5 +445,66 @@ export class RealtimeGateway
     }
 
     return { appointmentId, mic, camera };
+  }
+
+  private parseAudioChunk(payload: unknown): AudioChunkFrame | null {
+    if (!isRecord(payload)) {
+      return null;
+    }
+
+    const consultationId = payload.consultationId;
+    if (typeof consultationId !== 'string' || consultationId.length === 0) {
+      return null;
+    }
+
+    const seq = payload.seq;
+    if (typeof seq !== 'number' || !Number.isInteger(seq) || seq < 0) {
+      return null;
+    }
+
+    const data = payload.data;
+    if (typeof data !== 'string' || data.length === 0) {
+      return null;
+    }
+
+    if (payload.encoding !== 'pcm_s16le') {
+      return null;
+    }
+
+    const sampleRate = payload.sampleRate;
+    if (typeof sampleRate !== 'number' || sampleRate <= 0) {
+      return null;
+    }
+
+    if (payload.channels !== 1) {
+      return null;
+    }
+
+    return {
+      consultationId,
+      seq,
+      data,
+      encoding: 'pcm_s16le',
+      sampleRate,
+      channels: 1,
+    };
+  }
+
+  private parseAudioEnd(payload: unknown): AudioEndFrame | null {
+    if (!isRecord(payload)) {
+      return null;
+    }
+
+    const consultationId = payload.consultationId;
+    if (typeof consultationId !== 'string' || consultationId.length === 0) {
+      return null;
+    }
+
+    const seq = payload.seq;
+    if (typeof seq !== 'number' || !Number.isInteger(seq) || seq < 0) {
+      return null;
+    }
+
+    return { consultationId, seq };
   }
 }

@@ -10,6 +10,7 @@ import type {
   UserRole,
 } from '@telemed/service-contracts';
 import type { Namespace } from 'socket.io';
+import type { AudioFrameHandler } from './audio-frame-handler';
 
 export type RealtimeServer = Namespace<
   ClientToServerEvents,
@@ -36,6 +37,7 @@ const DEFAULT_STUN_URL = 'stun:stun.l.google.com:19302';
 @Injectable()
 export class RealtimeService {
   private server: RealtimeServer | null = null;
+  private audioFrameHandler: AudioFrameHandler | null = null;
   private readonly presence = new Map<string, Map<string, PresenceEntry>>();
   private readonly socketMemberships = new Map<string, Set<string>>();
 
@@ -43,6 +45,14 @@ export class RealtimeService {
 
   setServer(server: RealtimeServer): void {
     this.server = server;
+  }
+
+  setAudioFrameHandler(handler: AudioFrameHandler | null): void {
+    this.audioFrameHandler = handler;
+  }
+
+  getAudioFrameHandler(): AudioFrameHandler | null {
+    return this.audioFrameHandler;
   }
 
   appointmentRoom(appointmentId: string): string {

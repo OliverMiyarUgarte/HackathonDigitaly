@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { TerminusModule } from '@nestjs/terminus';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import * as Joi from 'joi';
+import { AiModule } from './ai/ai.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AttachmentsModule } from './attachments/attachments.module';
 import { AuthModule } from './auth/auth.module';
@@ -43,6 +44,9 @@ import { RecordsModule } from './records/records.module';
         OTP_TTL_SECONDS: Joi.number().integer().positive().default(600),
         OTP_MAX_ATTEMPTS: Joi.number().integer().positive().default(5),
         AI_SERVICE_URL: Joi.string().default('http://localhost:8000'),
+        AI_BASE_URL: Joi.string().allow('').optional(),
+        AI_WS_URL: Joi.string().allow('').optional(),
+        AI_INTERNAL_TOKEN: Joi.string().required(),
         UPLOAD_DIR: Joi.string().default('./uploads'),
         UPLOAD_MAX_BYTES: Joi.number().integer().positive().default(10_485_760),
         STORAGE_DRIVER: Joi.string().valid('local').default('local'),
@@ -57,6 +61,7 @@ import { RecordsModule } from './records/records.module';
     PrismaModule,
     HealthModule,
     AuthModule,
+    AiModule,
     AppointmentsModule,
     AttachmentsModule,
     MailModule,

@@ -1,4 +1,5 @@
 import { HttpException } from '@nestjs/common';
+import type { AiProxyService } from '../ai/ai-proxy.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import type { Appointment, Consultation } from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -37,6 +38,11 @@ interface RealtimeMock {
   appointmentRoom: jest.Mock;
 }
 
+interface AiProxyMock {
+  openSession: jest.Mock;
+  closeSession: jest.Mock;
+}
+
 function createPrismaMock(): PrismaMock {
   const mock: PrismaMock = {
     $transaction: jest.fn<
@@ -62,6 +68,13 @@ function createRealtimeMock(): RealtimeMock {
     buildIceServers: jest.fn(),
     getParticipants: jest.fn(),
     appointmentRoom: jest.fn(),
+  };
+}
+
+function createAiProxyMock(): AiProxyMock {
+  return {
+    openSession: jest.fn().mockResolvedValue(undefined),
+    closeSession: jest.fn(),
   };
 }
 
@@ -112,10 +125,12 @@ describe('ConsultationsService', () => {
   let service: ConsultationsService;
   let prisma: PrismaMock;
   let realtime: RealtimeMock;
+  let aiProxy: AiProxyMock;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     realtime = createRealtimeMock();
+    aiProxy = createAiProxyMock();
     realtime.appointmentRoom.mockImplementation(
       (appointmentId: string) => `appointment:${appointmentId}`,
     );
@@ -126,6 +141,7 @@ describe('ConsultationsService', () => {
     service = new ConsultationsService(
       prisma as unknown as PrismaService,
       realtime as unknown as RealtimeService,
+      aiProxy as unknown as AiProxyService,
     );
   });
 
@@ -261,6 +277,11 @@ describe('ConsultationsService', () => {
           startedAt: expect.any(String) as string,
         }),
       );
+      expect(aiProxy.openSession).toHaveBeenCalledWith({
+        consultationId: 'consultation-new',
+        appointmentId: 'appointment-1',
+        doctorId: DOCTOR.sub,
+      });
     });
   });
 
@@ -325,6 +346,7 @@ describe('ConsultationsService', () => {
           endedAt: expect.any(String) as string,
         }),
       );
+      expect(aiProxy.closeSession).toHaveBeenCalledWith('consultation-1');
     });
   });
 });
