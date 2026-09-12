@@ -15,6 +15,12 @@ All notable contract changes are documented here. The format follows
   returning `ConsultationHistoryItemDto[]`; replaces the previously documented
   `GET /api/records` summary listing.
 
+### Changed
+
+- `GET /api/attachments/{id}` now returns the file bytes (`application/octet-stream`)
+  instead of JSON metadata.
+- Attachment `kind` is classified by the API; it is no longer an upload form field.
+
 ## [0.1.0] - 2026-09-12
 
 ### Added

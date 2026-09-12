@@ -5,6 +5,7 @@ import { TerminusModule } from '@nestjs/terminus';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import * as Joi from 'joi';
 import { AppointmentsModule } from './appointments/appointments.module';
+import { AttachmentsModule } from './attachments/attachments.module';
 import { AuthModule } from './auth/auth.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -43,6 +44,8 @@ import { RecordsModule } from './records/records.module';
         OTP_MAX_ATTEMPTS: Joi.number().integer().positive().default(5),
         AI_SERVICE_URL: Joi.string().default('http://localhost:8000'),
         UPLOAD_DIR: Joi.string().default('./uploads'),
+        UPLOAD_MAX_BYTES: Joi.number().integer().positive().default(10_485_760),
+        STORAGE_DRIVER: Joi.string().valid('local').default('local'),
         STUN_URLS: Joi.string().default('stun:stun.l.google.com:19302'),
         TURN_URLS: Joi.string().optional(),
         TURN_USERNAME: Joi.string().allow('').optional(),
@@ -55,6 +58,7 @@ import { RecordsModule } from './records/records.module';
     HealthModule,
     AuthModule,
     AppointmentsModule,
+    AttachmentsModule,
     MailModule,
     RealtimeModule,
     ConsultationsModule,

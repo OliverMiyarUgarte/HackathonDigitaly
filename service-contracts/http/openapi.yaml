@@ -795,10 +795,9 @@ paths:
                 file:
                   type: string
                   format: binary
-                kind:
-                  $ref: '#/components/schemas/AttachmentKind'
                 consultationId:
                   type: string
+                  format: uuid
       responses:
         '201':
           description: Attachment uploaded
@@ -825,8 +824,8 @@ paths:
   /api/attachments/{id}:
     get:
       tags: [attachments]
-      operationId: getAttachment
-      summary: Get attachment metadata
+      operationId: downloadAttachment
+      summary: Download attachment bytes
       security:
         - bearerAuth: []
       parameters:
@@ -835,13 +834,23 @@ paths:
           required: true
           schema:
             type: string
+            format: uuid
       responses:
         '200':
-          description: Attachment
-          content:
-            application/json:
+          description: Attachment bytes
+          headers:
+            Content-Disposition:
               schema:
-                $ref: '#/components/schemas/AttachmentDto'
+                type: string
+            X-Content-Type-Options:
+              schema:
+                type: string
+                enum: [nosniff]
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

@@ -26,3 +26,7 @@ yarn-error.log*
 
 # Prisma generated client
 /src/generated
+
+# Local attachment storage (never commit uploaded patient files)
+/uploads
+/uploads/
