@@ -1,11 +1,14 @@
-export type UserRole = 'doctor' | 'patient';
+export const USER_ROLES = ['doctor', 'patient'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
 
-export type AppointmentStatus =
-  | 'pending_code'
-  | 'confirmed'
-  | 'in_progress'
-  | 'completed'
-  | 'cancelled';
+export const APPOINTMENT_STATUSES = [
+  'pending_code',
+  'confirmed',
+  'in_progress',
+  'completed',
+  'cancelled',
+] as const;
+export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 
 export type ConsultationStatus = 'active' | 'ended';
 

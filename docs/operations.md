@@ -53,8 +53,8 @@ Documented in `Backend/.env.example`. Compose overrides the last column.
 | `WEB_ORIGIN` | no | `http://localhost:3000` | Comma-separated CORS allow-list |
 | `JWT_SECRET` | yes | `<random>` | Access token signing key |
 | `JWT_EXPIRES_IN` | no | `15m` | Access token TTL |
-| `JWT_REFRESH_SECRET` | yes | `<random>` | Refresh token signing key |
 | `JWT_REFRESH_EXPIRES_IN` | no | `7d` | Refresh token TTL |
+| `SWAGGER_ENABLED` | no | `true` | Mount `/docs`; set `false` in production |
 | `MAIL_HOST` / `MAIL_PORT` | no | `mailhog` / `1025` | SMTP for validation codes |
 | `MAIL_USER` / `MAIL_PASSWORD` | no | empty | SMTP credentials |
 | `MAIL_FROM` | no | `no-reply@digitaly.health` | Sender address |
@@ -69,6 +69,11 @@ Documented in `Backend/.env.example`. Compose overrides the last column.
 | `STORAGE_DRIVER` | no | `local` | `local` today; S3-compatible in prod |
 | `STUN_URLS` | no | `stun:stun.l.google.com:19302` | WebRTC ICE |
 | `TURN_URLS` / `TURN_USERNAME` / `TURN_CREDENTIAL` | prod | empty | TURN relays for restrictive networks |
+
+Refresh tokens are opaque 256-bit random values (`randomBytes(32)`); the API stores only
+their SHA-256 hash and revokes them by value, so there is no refresh-token signing secret.
+Swagger is mounted by default for the demo; set `SWAGGER_ENABLED=false` in production so
+the API schema and `/docs` are not exposed.
 
 Secrets must come from the environment or a secret manager, never from the image or git.
 
@@ -171,8 +176,9 @@ with the correlation id attached. Dashboards and alerts are built from the metri
   memory.
 - The container image contains no secrets; build args are limited to a dummy
   `DATABASE_URL` used exclusively for `prisma generate`.
-- Rotate `JWT_SECRET`, `JWT_REFRESH_SECRET`, `OTP_PEPPER` and `AI_INTERNAL_TOKEN`
-  regularly; rotate the database and SMTP credentials independently.
+- Rotate `JWT_SECRET`, `OTP_PEPPER` and `AI_INTERNAL_TOKEN` regularly; rotate the
+  database and SMTP credentials independently. Refresh tokens are random and hashed, so
+  they need no secret and are revoked by value.
 - Keep development, staging and production secrets separate; least-privilege access.
 
 ## 6. LGPD retention (recordings and transcripts)

@@ -1,8 +1,9 @@
-from typing import Annotated, Dict, List, Literal, Optional, Union
+from typing import Annotated, Dict, List, Literal, Optional, Union, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
 UserRole = Literal["doctor", "patient"]
+USER_ROLES = get_args(UserRole)
 
 AppointmentStatus = Literal[
     "pending_code",
@@ -11,6 +12,7 @@ AppointmentStatus = Literal[
     "completed",
     "cancelled",
 ]
+APPOINTMENT_STATUSES = get_args(AppointmentStatus)
 
 ConsultationStatus = Literal["active", "ended"]
 

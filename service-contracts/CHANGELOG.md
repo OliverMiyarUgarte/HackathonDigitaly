@@ -14,12 +14,21 @@ All notable contract changes are documented here. The format follows
 - Consultation history endpoint `GET /api/records/history` (`patientId`, `from`, `to`)
   returning `ConsultationHistoryItemDto[]`; replaces the previously documented
   `GET /api/records` summary listing.
+- Runtime `USER_ROLES` and `APPOINTMENT_STATUSES` constants (with their derived
+  `UserRole` and `AppointmentStatus` types) so API DTO validation references the shared
+  contract instead of the database-generated enum.
+- `GET /api/users/patients/{patientId}` returning `UserDto` for a doctor linked to the
+  patient through a non-cancelled appointment.
+- Optional `q` name filter on `GET /api/users/doctors`.
 
 ### Changed
 
-- `GET /api/attachments/{id}` now returns the file bytes (`application/octet-stream`)
-  instead of JSON metadata.
+- `GET /api/attachments/{id}` now returns the stored file `Content-Type` instead of JSON
+  metadata; the OpenAPI 200 response accepts any binary content type (`*/*`) and
+  `application/octet-stream` is only the fallback when the content type is unknown.
 - Attachment `kind` is classified by the API; it is no longer an upload form field.
+- `POST /api/auth/logout` is documented as public (`security: []`) because refresh
+  tokens are opaque and revoked by value; the documented 401 response was removed.
 
 ## [0.1.0] - 2026-09-12
 

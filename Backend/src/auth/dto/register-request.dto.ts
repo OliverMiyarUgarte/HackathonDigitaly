@@ -1,15 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { RegisterRequestDto as RegisterRequest } from '@telemed/service-contracts';
+import { USER_ROLES, type UserRole } from '@telemed/service-contracts';
 import {
   IsEmail,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   Length,
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { UserRole } from '../../generated/prisma/enums';
 
 export class RegisterRequestDto implements RegisterRequest {
   @ApiProperty({ minLength: 2, maxLength: 120 })
@@ -27,8 +27,8 @@ export class RegisterRequestDto implements RegisterRequest {
   @MaxLength(72)
   password!: string;
 
-  @ApiProperty({ enum: UserRole, enumName: 'UserRole' })
-  @IsEnum(UserRole)
+  @ApiProperty({ enum: USER_ROLES, enumName: 'UserRole' })
+  @IsIn(USER_ROLES)
   role!: UserRole;
 
   @ApiPropertyOptional({ maxLength: 120 })

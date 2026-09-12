@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { argon2id, hash } from 'argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { createHmac } from 'node:crypto';
 import { PrismaClient } from '../src/generated/prisma/client';
 
 const prisma = new PrismaClient({
@@ -29,7 +30,22 @@ const preConsultAnswers = [
   { questionKey: 'medical_history', answer: 'Hipertensao arterial, sem internacoes recentes' },
 ] as const;
 
+function hashValidationCode(
+  pepper: string,
+  appointmentId: string,
+  code: string,
+): string {
+  return createHmac('sha256', pepper)
+    .update(`${appointmentId}:${code}`)
+    .digest('hex');
+}
+
 async function main(): Promise<void> {
+  const otpPepper = process.env.OTP_PEPPER;
+  if (!otpPepper) {
+    throw new Error('OTP_PEPPER is required to seed the demo validation code');
+  }
+
   const passwordHash = await hash(DEMO_PASSWORD, { type: argon2id });
 
   const doctor = await prisma.user.upsert({
@@ -112,7 +128,11 @@ async function main(): Promise<void> {
   const lastWeekEnd = new Date(lastWeek.getTime() + 30 * 60 * 1000);
   const consumedAt = new Date(now.getTime() - 5 * 60 * 1000);
   const consumedCodeExpiresAt = new Date(now.getTime() + 5 * 60 * 1000);
-  const consumedCodeHash = await hash('482913', { type: argon2id });
+  const consumedCodeHash = hashValidationCode(
+    otpPepper,
+    DEMO_IDS.consumedCodeAppointment,
+    '482913',
+  );
 
   const pendingAppointment = await prisma.appointment.upsert({
     where: { id: DEMO_IDS.pendingAppointment },

@@ -19,6 +19,7 @@ import { MailModule } from './mail/mail.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { RecordsModule } from './records/records.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -33,8 +34,8 @@ import { RecordsModule } from './records/records.module';
         WEB_ORIGIN: Joi.string().default('http://localhost:3000'),
         JWT_SECRET: Joi.string().required(),
         JWT_EXPIRES_IN: Joi.string().default('15m'),
-        JWT_REFRESH_SECRET: Joi.string().required(),
         JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
+        SWAGGER_ENABLED: Joi.boolean().default(true),
         MAIL_HOST: Joi.string().optional(),
         MAIL_PORT: Joi.number().optional(),
         MAIL_USER: Joi.string().allow('').optional(),
@@ -68,6 +69,7 @@ import { RecordsModule } from './records/records.module';
     RealtimeModule,
     ConsultationsModule,
     RecordsModule,
+    UsersModule,
   ],
   providers: [
     {

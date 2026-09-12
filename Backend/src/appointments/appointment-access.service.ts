@@ -38,6 +38,23 @@ export class AppointmentAccessService {
     }
   }
 
+  async assertNonCancelledPatientAccess(
+    doctor: AuthenticatedUser,
+    patientId: string,
+  ): Promise<void> {
+    const link = await this.prisma.appointment.findFirst({
+      where: {
+        doctorId: doctor.sub,
+        patientId,
+        status: { not: 'cancelled' },
+      },
+      select: { id: true },
+    });
+    if (!link) {
+      throw this.forbidden();
+    }
+  }
+
   private forbidden(): ForbiddenException {
     return new ForbiddenException({
       errorCode: 'FORBIDDEN',

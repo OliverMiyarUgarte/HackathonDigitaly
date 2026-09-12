@@ -107,8 +107,7 @@ paths:
       tags: [auth]
       operationId: logout
       summary: Revoke the current refresh token
-      security:
-        - bearerAuth: []
+      security: []
       requestBody:
         required: false
         content:
@@ -118,8 +117,6 @@ paths:
       responses:
         '204':
           description: Logged out
-        '401':
-          $ref: '#/components/responses/Unauthorized'
   /api/auth/me:
     get:
       tags: [auth]
@@ -188,6 +185,12 @@ paths:
           required: false
           schema:
             type: string
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive name filter
+          schema:
+            type: string
       responses:
         '200':
           description: Doctors
@@ -199,6 +202,33 @@ paths:
                   $ref: '#/components/schemas/DoctorSummaryDto'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /api/users/patients/{patientId}:
+    get:
+      tags: [users]
+      operationId: getPatientProfile
+      summary: Get a patient profile linked to the authenticated doctor
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Patient profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/patients/{patientId}/overview:
     get:
       tags: [records]
@@ -837,7 +867,7 @@ paths:
             format: uuid
       responses:
         '200':
-          description: Attachment bytes
+          description: Attachment bytes with the stored file content type
           headers:
             Content-Disposition:
               schema:
@@ -847,7 +877,7 @@ paths:
                 type: string
                 enum: [nosniff]
           content:
-            application/octet-stream:
+            '*/*':
               schema:
                 type: string
                 format: binary

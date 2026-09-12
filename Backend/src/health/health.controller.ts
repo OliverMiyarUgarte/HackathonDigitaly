@@ -1,23 +1,32 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-  HealthCheck,
-  HealthCheckResult,
-  HealthCheckService,
-} from '@nestjs/terminus';
+import type { HealthResponseDto } from '@telemed/service-contracts';
+import { APP_VERSION } from '../common/constants/app-version';
 import { Public } from '../common/decorators/public.decorator';
 
 @ApiTags('health')
 @Public()
 @Controller('health')
 export class HealthController {
-  constructor(private readonly health: HealthCheckService) {}
-
   @ApiOperation({ summary: 'Liveness probe' })
-  @ApiOkResponse({ description: 'The service process is alive' })
+  @ApiOkResponse({
+    description: 'The service process is alive',
+    schema: {
+      example: {
+        status: 'ok',
+        uptimeSeconds: 12,
+        timestamp: '2026-01-01T00:00:00.000Z',
+        version: APP_VERSION,
+      },
+    },
+  })
   @Get()
-  @HealthCheck()
-  check(): Promise<HealthCheckResult> {
-    return this.health.check([]);
+  check(): HealthResponseDto {
+    return {
+      status: 'ok',
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      version: APP_VERSION,
+    };
   }
 }

@@ -1,6 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsISO8601, IsOptional } from 'class-validator';
-import { AppointmentStatus } from '../../generated/prisma/enums';
+import {
+  APPOINTMENT_STATUSES,
+  type AppointmentStatus,
+} from '@telemed/service-contracts';
+import { IsIn, IsISO8601, IsOptional } from 'class-validator';
 
 export class DoctorAppointmentsQueryDto {
   @ApiPropertyOptional({ format: 'date-time' })
@@ -9,10 +12,10 @@ export class DoctorAppointmentsQueryDto {
   date?: string;
 
   @ApiPropertyOptional({
-    enum: AppointmentStatus,
+    enum: APPOINTMENT_STATUSES,
     enumName: 'AppointmentStatus',
   })
   @IsOptional()
-  @IsEnum(AppointmentStatus)
+  @IsIn(APPOINTMENT_STATUSES)
   status?: AppointmentStatus;
 }

@@ -1,5 +1,7 @@
-export type UserRole = 'doctor' | 'patient';
-export type AppointmentStatus = 'pending_code' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
+export declare const USER_ROLES: readonly ["doctor", "patient"];
+export type UserRole = (typeof USER_ROLES)[number];
+export declare const APPOINTMENT_STATUSES: readonly ["pending_code", "confirmed", "in_progress", "completed", "cancelled"];
+export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 export type ConsultationStatus = 'active' | 'ended';
 export type FeedbackSeverity = 'info' | 'warning' | 'critical';
 export type AttachmentKind = 'document' | 'image' | 'other';

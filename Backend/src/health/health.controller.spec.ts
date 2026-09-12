@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { HealthCheckService } from '@nestjs/terminus';
+import { APP_VERSION } from '../common/constants/app-version';
 import { HealthController } from './health.controller';
 
 describe('HealthController', () => {
@@ -8,19 +8,6 @@ describe('HealthController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
-      providers: [
-        {
-          provide: HealthCheckService,
-          useValue: {
-            check: jest.fn().mockResolvedValue({
-              status: 'ok',
-              info: {},
-              error: {},
-              details: {},
-            }),
-          },
-        },
-      ],
     }).compile();
 
     controller = module.get<HealthController>(HealthController);
@@ -30,12 +17,13 @@ describe('HealthController', () => {
     expect(controller).toBeDefined();
   });
 
-  it('returns an ok health result', async () => {
-    await expect(controller.check()).resolves.toEqual({
-      status: 'ok',
-      info: {},
-      error: {},
-      details: {},
-    });
+  it('returns the contract liveness payload', () => {
+    const result = controller.check();
+
+    expect(result.status).toBe('ok');
+    expect(typeof result.uptimeSeconds).toBe('number');
+    expect(result.uptimeSeconds).toBeGreaterThanOrEqual(0);
+    expect(new Date(result.timestamp).toISOString()).toBe(result.timestamp);
+    expect(result.version).toBe(APP_VERSION);
   });
 });
