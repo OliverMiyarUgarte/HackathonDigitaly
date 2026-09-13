@@ -3,15 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  ArrowRight,
-  Eye,
-  EyeOff,
-  Lock,
-  Mail,
-  Stethoscope,
-  User,
-} from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,13 +14,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiError } from "@/lib/api";
 import { useSession } from "@/lib/auth";
-import {
-  loginRequestSchema,
-  type UserRole,
-} from "@/lib/contracts";
+import { loginRequestSchema } from "@/lib/contracts";
 
 interface FieldErrors {
   email?: string;
@@ -49,7 +37,6 @@ const ERROR_MESSAGES: Partial<Record<string, string>> = {
 export default function EntrarPage() {
   const router = useRouter();
   const { login } = useSession();
-  const [profile, setProfile] = useState<UserRole>("patient");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -57,10 +44,17 @@ export default function EntrarPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
+  const validateField = (field: "email" | "password", value: string): void => {
+    const parsed = loginRequestSchema.shape[field].safeParse(value);
+    setFieldErrors((current) => ({
+      ...current,
+      [field]: parsed.success ? undefined : parsed.error.issues[0]?.message,
+    }));
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
-    setFieldErrors({});
 
     const parsed = loginRequestSchema.safeParse({ email, password });
     if (!parsed.success) {
@@ -77,6 +71,7 @@ export default function EntrarPage() {
       setFieldErrors(errors);
       return;
     }
+    setFieldErrors({});
 
     setSubmitting(true);
     try {
@@ -98,33 +93,19 @@ export default function EntrarPage() {
   return (
     <Card variant="glass">
       <CardHeader>
-        <CardTitle>Entrar no teleatendimento</CardTitle>
+        <CardTitle level="h1" className="text-3xl">
+          Entrar no teleatendimento
+        </CardTitle>
         <CardDescription>
-          Use o e-mail e a senha da sua conta. O perfil é identificado
-          automaticamente pelo cadastro.
+          Use o e-mail e a senha da sua conta. O perfil de paciente ou médico é
+          identificado automaticamente pelo cadastro.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs
-          value={profile}
-          onValueChange={(value) => setProfile(value as UserRole)}
-        >
-          <TabsList aria-label="Perfil de acesso" className="w-full">
-            <TabsTrigger value="patient" className="flex-1">
-              <User aria-hidden="true" className="size-4" />
-              Paciente
-            </TabsTrigger>
-            <TabsTrigger value="doctor" className="flex-1">
-              <Stethoscope aria-hidden="true" className="size-4" />
-              Médico
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
         <form
           onSubmit={handleSubmit}
           noValidate
-          className="mt-5 flex flex-col gap-4"
+          className="flex flex-col gap-4"
         >
           {formError ? (
             <Alert variant="error" title="Não foi possível entrar">
@@ -139,6 +120,7 @@ export default function EntrarPage() {
             placeholder="voce@exemplo.com"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            onBlur={(event) => validateField("email", event.target.value)}
             error={fieldErrors.email}
             leading={<Mail aria-hidden="true" className="size-4" />}
           />
@@ -150,6 +132,7 @@ export default function EntrarPage() {
             placeholder="Sua senha"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            onBlur={(event) => validateField("password", event.target.value)}
             error={fieldErrors.password}
             leading={<Lock aria-hidden="true" className="size-4" />}
             trailing={
@@ -157,7 +140,7 @@ export default function EntrarPage() {
                 type="button"
                 onClick={() => setShowPassword((current) => !current)}
                 aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                className="inline-flex size-8 items-center justify-center rounded-pill text-texto-3 transition-colors hover:text-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
+                className="inline-flex size-10 items-center justify-center rounded-pill text-texto-3 transition-colors hover:text-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
               >
                 {showPassword ? (
                   <EyeOff aria-hidden="true" className="size-4" />
@@ -171,13 +154,19 @@ export default function EntrarPage() {
           <div className="flex items-center justify-end">
             <Link
               href="/recuperar-senha"
-              className="text-xs font-medium text-celeste-500 hover:underline"
+              className="text-xs font-medium text-accent hover:underline"
             >
               Esqueci minha senha
             </Link>
           </div>
 
-          <Button type="submit" size="lg" disabled={submitting} className="w-full">
+          <Button
+            type="submit"
+            size="lg"
+            disabled={submitting}
+            aria-busy={submitting}
+            className="w-full"
+          >
             {submitting ? "Entrando..." : "Entrar na plataforma"}
             {submitting ? null : (
               <ArrowRight aria-hidden="true" className="size-4" />
@@ -189,7 +178,7 @@ export default function EntrarPage() {
           Ainda não tem conta?{" "}
           <Link
             href="/registro"
-            className="font-medium text-celeste-500 hover:underline"
+            className="font-medium text-accent hover:underline"
           >
             Criar conta de paciente
           </Link>

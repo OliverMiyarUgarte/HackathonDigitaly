@@ -34,7 +34,7 @@ import { formatDateTimeWithContext } from "@/lib/format";
 import { maskEmail } from "@/lib/appointments";
 import { useAsyncWithKey, useToast } from "@/lib/hooks";
 import { CodeInput } from "./code-input";
-import { ErrorState } from "./section-states";
+import { ErrorState, LoadingIndicator } from "./section-states";
 
 const CODE_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 30;
@@ -237,11 +237,14 @@ export function ConfirmAppointment({
 
   if (appointmentState.error || !appointmentState.data) {
     return (
-      <ErrorState
-        title="Agendamento não encontrado"
-        description="Não foi possível localizar este agendamento. Volte ao calendário e tente novamente."
-        onRetry={appointmentState.reload}
-      />
+      <div className="flex flex-col gap-6">
+        <h1 className="text-texto">Agendamento não encontrado</h1>
+        <ErrorState
+          title="Agendamento não encontrado"
+          description="Não foi possível localizar este agendamento. Volte ao calendário e tente novamente."
+          onRetry={appointmentState.reload}
+        />
+      </div>
     );
   }
 
@@ -257,7 +260,9 @@ export function ConfirmAppointment({
               <CheckCircle2 aria-hidden="true" className="size-5 text-sucesso" />
               <Badge variant="success">Confirmada</Badge>
             </div>
-            <CardTitle>Agendamento confirmado</CardTitle>
+            <CardTitle level="h1" className="text-3xl">
+              Agendamento confirmado
+            </CardTitle>
             <CardDescription>
               A consulta está confirmada. Você receberá um aviso quando o médico
               iniciar a sala.
@@ -291,10 +296,13 @@ export function ConfirmAppointment({
 
   if (appointment.status === "cancelled") {
     return (
-      <Alert variant="warning" title="Agendamento cancelado">
-        Este agendamento foi cancelado e não pode mais ser confirmado. Agende um
-        novo horário para continuar.
-      </Alert>
+      <div className="flex flex-col gap-6">
+        <h1 className="text-texto">Agendamento cancelado</h1>
+        <Alert variant="warning" title="Agendamento cancelado">
+          Este agendamento foi cancelado e não pode mais ser confirmado. Agende
+          um novo horário para continuar.
+        </Alert>
+      </div>
     );
   }
 
@@ -307,10 +315,10 @@ export function ConfirmAppointment({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium text-texto">
+      <div className="flex flex-col gap-2">
+        <h1 className="max-w-[68ch] text-balance text-texto">
           Confirme com o código
-        </h2>
+        </h1>
         <p className="max-w-[68ch] text-texto-2">
           Enviamos um código de 6 dígitos para{" "}
           <span className="font-medium text-texto">
@@ -323,7 +331,7 @@ export function ConfirmAppointment({
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Mail aria-hidden="true" className="size-4 text-celeste-500" />
+            <Mail aria-hidden="true" className="size-4 text-accent" />
             <CardTitle className="text-lg">Código de validação</CardTitle>
           </div>
           <CardDescription>
@@ -348,9 +356,7 @@ export function ConfirmAppointment({
           ) : null}
 
           {requesting && !codeInfo ? (
-            <p className="text-sm text-texto-3" role="status">
-              Enviando código...
-            </p>
+            <LoadingIndicator label="Enviando código de validação" />
           ) : null}
 
           {codeInfo ? (
@@ -424,7 +430,7 @@ export function ConfirmAppointment({
             href={MAILHOG_URL}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 font-medium text-celeste-500 hover:underline"
+            className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
           >
             Abrir MailHog
             <ExternalLink aria-hidden="true" className="size-3.5" />

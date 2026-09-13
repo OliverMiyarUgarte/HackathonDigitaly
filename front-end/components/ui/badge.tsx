@@ -10,7 +10,7 @@ export type BadgeVariant =
   | "outline";
 
 const variantClasses: Record<BadgeVariant, string> = {
-  brand: "bg-celeste-500/14 text-celeste-600 dark:text-celeste-400",
+  brand: "bg-celeste-500/14 text-accent",
   success: "bg-sucesso/14 text-sucesso",
   warning: "bg-alerta/14 text-alerta",
   error: "bg-erro/14 text-erro",
@@ -34,7 +34,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-xs font-medium",
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-3 py-1 text-xs font-medium",
         variantClasses[variant],
         className,
       )}

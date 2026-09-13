@@ -39,9 +39,9 @@ import {
 } from "@/lib/medico";
 import { StartConsultationAction } from "./start-consultation-action";
 
-function firstName(name: string | undefined): string {
+function firstName(name: string | undefined): string | null {
   const first = name?.trim().split(/\s+/)[0];
-  return first && first.length > 0 ? first : "Doutor(a)";
+  return first && first.length > 0 ? first : null;
 }
 
 interface StatCardProps {
@@ -67,6 +67,7 @@ function StatCard({ label, value, context }: StatCardProps) {
 export function DoctorHome() {
   const { user } = useSession();
   const todayKey = todaySaoPauloKey();
+  const greeting = firstName(user?.name);
 
   const agendaState = useAsyncWithKey(
     () =>
@@ -86,7 +87,7 @@ export function DoctorHome() {
   return (
     <div className="flex flex-col gap-6" data-testid="doctor-home">
       <PageHeader
-        title={`Olá, ${firstName(user?.name)}`}
+        title={greeting ? `Olá, ${greeting}` : "Sua agenda"}
         description="Sua agenda de hoje e o próximo atendimento em um só lugar."
         action={
           <Link

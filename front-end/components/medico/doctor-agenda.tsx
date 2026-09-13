@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CalendarDays, Eye, FilterX } from "lucide-react";
+import { CalendarDays, Eye, FilterX, Search } from "lucide-react";
 import { AppointmentStatusBadge } from "@/components/paciente/appointment-status-badge";
 import {
   ErrorState,
@@ -44,6 +44,7 @@ const STATUS_OPTIONS: readonly SelectOption[] = [
 export function DoctorAgenda() {
   const [dateKey, setDateKey] = useState(todaySaoPauloKey());
   const [status, setStatus] = useState<AppointmentStatus | "">("");
+  const [query, setQuery] = useState("");
   const stateKey = `${dateKey}|${status}`;
 
   const state = useAsyncWithKey(() => {
@@ -69,12 +70,19 @@ export function DoctorAgenda() {
           new Date(right.scheduledAt).getTime() -
           new Date(left.scheduledAt).getTime(),
       );
-  const visible = ordered.slice(0, MAX_ROWS);
-  const hasFilters = Boolean(dateKey) || Boolean(status);
+  const normalizedQuery = query.trim().toLocaleLowerCase("pt-BR");
+  const filtered = normalizedQuery
+    ? ordered.filter((row) =>
+        row.patient.name.toLocaleLowerCase("pt-BR").includes(normalizedQuery),
+      )
+    : ordered;
+  const visible = dateKey ? filtered : filtered.slice(0, MAX_ROWS);
+  const hasFilters = Boolean(dateKey) || Boolean(status) || Boolean(normalizedQuery);
 
   const clearFilters = (): void => {
     setDateKey("");
     setStatus("");
+    setQuery("");
   };
 
   const columns: readonly DataTableColumn<DoctorAppointmentDto>[] = [
@@ -166,8 +174,17 @@ export function DoctorAgenda() {
       <div
         role="search"
         aria-label="Filtros da agenda"
-        className="grid gap-4 rounded-lg border border-borda bg-bg-elev p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+        className="grid gap-4 rounded-lg border border-borda bg-bg-elev p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
       >
+        <Input
+          label="Buscar paciente"
+          type="search"
+          placeholder="Nome do paciente"
+          value={query}
+          data-testid="agenda-search"
+          onChange={(event) => setQuery(event.target.value)}
+          leading={<Search aria-hidden="true" className="size-4" />}
+        />
         <Input
           label="Data"
           type="date"
@@ -205,9 +222,10 @@ export function DoctorAgenda() {
 
       <p className="text-xs text-texto-3" aria-live="polite">
         {dateKey ? `${formatDateKeyLabel(dateKey)} · ` : "Todas as datas · "}
-        {appointments.length}{" "}
-        {appointments.length === 1 ? "atendimento" : "atendimentos"}
-        {appointments.length > MAX_ROWS
+        {filtered.length}{" "}
+        {filtered.length === 1 ? "atendimento" : "atendimentos"}
+        {normalizedQuery ? ` para “${query.trim()}”` : ""}
+        {!dateKey && filtered.length > MAX_ROWS
           ? ` · exibindo os primeiros ${MAX_ROWS}`
           : ""}
       </p>
@@ -220,7 +238,7 @@ export function DoctorAgenda() {
           description="A agenda não pôde ser carregada. Verifique sua conexão e tente novamente."
           onRetry={state.reload}
         />
-      ) : appointments.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={CalendarDays}
           title="Nenhum atendimento encontrado"

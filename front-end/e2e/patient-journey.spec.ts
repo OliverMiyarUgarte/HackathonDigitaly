@@ -1,14 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readTokens, storageStatePath, type SessionTokens } from "./auth";
 
 const API_BASE = "http://localhost:3001/api";
 const MAILHOG_MESSAGES = "http://localhost:8025/api/v2/messages";
-const DEMO_PASSWORD = "Demo@1234";
 const PATIENT_EMAIL = "paciente@digitaly.health";
-
-interface SessionTokens {
-  accessToken: string;
-  refreshToken: string;
-}
 
 interface DoctorSummary {
   id: string;
@@ -46,60 +41,35 @@ interface MailHogResponse {
   items?: MailHogMessage[];
 }
 
+test.use({ storageState: storageStatePath("patient") });
+
 test.describe.configure({ mode: "serial" });
 
-let patientTokens: SessionTokens | null = null;
-
-async function requestSession(
-  page: Page,
-  email: string,
-): Promise<SessionTokens> {
-  let lastStatus = 0;
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const response = await page.request.post(`${API_BASE}/auth/login`, {
-      data: { email, password: DEMO_PASSWORD },
-    });
-    lastStatus = response.status();
-    if (response.ok()) {
-      const session = (await response.json()) as {
-        user: { role: "doctor" | "patient" };
-        tokens: SessionTokens;
-      };
-      return session.tokens;
-    }
-    if (lastStatus === 429) {
-      await page.waitForTimeout(15000);
-      continue;
-    }
-    break;
-  }
-  throw new Error(`Login falhou para ${email} (HTTP ${lastStatus})`);
-}
-
-async function openAuthenticated(
-  page: Page,
-  tokens: SessionTokens,
-): Promise<void> {
-  await page.addInitScript((session) => {
-    window.localStorage.setItem("digitaly.accessToken", session.accessToken);
-    window.localStorage.setItem("digitaly.refreshToken", session.refreshToken);
-  }, tokens);
+async function openBooking(page: Page): Promise<SessionTokens> {
+  const tokens = readTokens("patient");
   await page.goto("/paciente/agendar");
   await expect(
     page.getByRole("heading", { name: /agendar consulta/i }),
   ).toBeVisible({ timeout: 30000 });
-}
-
-async function ensurePatientSession(page: Page): Promise<SessionTokens> {
-  if (!patientTokens) {
-    patientTokens = await requestSession(page, PATIENT_EMAIL);
-  }
-  await openAuthenticated(page, patientTokens);
-  return patientTokens;
+  return tokens;
 }
 
 function authHeaders(token: string): { Authorization: string } {
   return { Authorization: `Bearer ${token}` };
+}
+
+async function waitForCodeInput(page: Page): Promise<void> {
+  const input = page.getByTestId("code-input-0");
+  const retry = page.getByRole("button", { name: /tentar novamente/i });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await expect(input.or(retry).first()).toBeVisible({ timeout: 30000 });
+    if (await input.isVisible().catch(() => false)) {
+      return;
+    }
+    await retry.click();
+    await page.waitForTimeout(1000);
+  }
+  await expect(input).toBeVisible({ timeout: 30000 });
 }
 
 async function listDoctors(
@@ -240,7 +210,7 @@ function pickDoctor(doctors: DoctorSummary[]): DoctorSummary {
 test("paciente agenda, confirma com código do MailHog e vê no calendário", async ({
   page,
 }) => {
-  const tokens = await ensurePatientSession(page);
+  const tokens = await openBooking(page);
   const doctors = await listDoctors(page, tokens.accessToken);
   const doctor = pickDoctor(doctors);
   const slots = await listSlots(page, tokens.accessToken, doctor.id);
@@ -272,9 +242,7 @@ test("paciente agenda, confirma com código do MailHog e vê no calendário", as
     }
     appointmentId = createdId;
 
-    await expect(page.getByTestId("code-input-0")).toBeVisible({
-      timeout: 30000,
-    });
+    await waitForCodeInput(page);
 
     const code = await waitForCode(page, previousMessageId);
     await page.getByTestId("code-input-0").click();
@@ -310,7 +278,7 @@ test("paciente agenda, confirma com código do MailHog e vê no calendário", as
 test("código incorreto mostra erro genérico e mantém o agendamento pendente", async ({
   page,
 }) => {
-  const tokens = await ensurePatientSession(page);
+  const tokens = await openBooking(page);
   const doctors = await listDoctors(page, tokens.accessToken);
   const doctor = pickDoctor(doctors);
   const slots = await listSlots(page, tokens.accessToken, doctor.id);
@@ -326,9 +294,7 @@ test("código incorreto mostra erro genérico e mantém o agendamento pendente",
     await page.goto(
       `/paciente/confirmar-agendamento?appointmentId=${appointment.id}`,
     );
-    await expect(page.getByTestId("code-input-0")).toBeVisible({
-      timeout: 30000,
-    });
+    await waitForCodeInput(page);
 
     const code = await waitForCode(page, null);
     const wrongCode = code === "000000" ? "000001" : "000000";

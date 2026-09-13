@@ -4,7 +4,13 @@ import { ThemeToggle } from "@/components/brand/theme-toggle";
 
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
-    <div className="relative flex min-h-screen flex-col bg-bg">
+    <div className="relative flex min-h-screen flex-col overflow-x-clip bg-bg">
+      <a
+        href="#conteudo"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[70] focus:rounded-pill focus:bg-bg-elev focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-texto focus:ring-2 focus:ring-celeste-500"
+      >
+        Pular para o conteúdo
+      </a>
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 overflow-hidden"
@@ -18,12 +24,13 @@ export function AuthShell({ children }: { children: ReactNode }) {
         <ThemeToggle />
       </header>
 
-      <main className="relative z-10 flex flex-1 items-center justify-center px-4 pb-12">
+      <main
+        id="conteudo"
+        className="relative z-10 flex flex-1 items-center justify-center px-4 pb-12"
+      >
         <div className="w-full max-w-md">
           <div className="mb-6 flex flex-col gap-1">
-            <p className="text-sm font-medium text-celeste-500">
-              Teleatendimento
-            </p>
+            <p className="text-sm font-medium text-accent">Teleatendimento</p>
             <p className="text-sm text-texto-2">Inteligência em Produção</p>
           </div>
           {children}

@@ -222,7 +222,7 @@ export function PatientHome() {
       </section>
 
       <section aria-label="Ações rápidas" className="flex flex-col gap-3">
-        <h3 className="text-lg font-medium text-texto">Ações rápidas</h3>
+        <h2 className="text-xl font-medium text-texto">Ações rápidas</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {QUICK_ACTIONS.map((action) => (
             <Link
@@ -230,7 +230,7 @@ export function PatientHome() {
               href={action.href}
               className="group rounded-lg border border-borda bg-bg-elev p-5 transition-colors hover:border-celeste-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
             >
-              <span className="flex size-10 items-center justify-center rounded-full bg-celeste-500/14 text-celeste-500">
+              <span className="flex size-10 items-center justify-center rounded-full bg-celeste-500/14 text-accent">
                 <action.Icon aria-hidden="true" className="size-5" />
               </span>
               <p className="mt-3 text-base font-medium text-texto">
@@ -244,10 +244,10 @@ export function PatientHome() {
 
       <section aria-label="Consultas recentes" className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-lg font-medium text-texto">Consultas recentes</h3>
+          <h2 className="text-xl font-medium text-texto">Consultas recentes</h2>
           <Link
             href="/paciente/historico"
-            className="inline-flex items-center gap-1 text-sm font-medium text-celeste-500 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
+            className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
           >
             Ver histórico
             <ArrowRight aria-hidden="true" className="size-4" />

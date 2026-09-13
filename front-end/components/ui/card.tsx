@@ -30,12 +30,31 @@ export function CardHeader({
   return <div className={cn("flex flex-col gap-1", className)} {...props} />;
 }
 
+export type CardTitleLevel = "h1" | "h2" | "h3" | "h4";
+
+const titleLevelClasses: Record<CardTitleLevel, string> = {
+  h1: "text-4xl font-thin",
+  h2: "text-xl font-medium",
+  h3: "text-xl font-medium",
+  h4: "text-lg font-medium",
+};
+
+export interface CardTitleProps
+  extends HTMLAttributes<HTMLHeadingElement> {
+  level?: CardTitleLevel;
+}
+
 export function CardTitle({
+  level = "h2",
   className,
   ...props
-}: HTMLAttributes<HTMLHeadingElement>) {
+}: CardTitleProps) {
+  const Heading = level;
   return (
-    <h3 className={cn("text-xl font-medium text-texto", className)} {...props} />
+    <Heading
+      className={cn(titleLevelClasses[level], "text-texto", className)}
+      {...props}
+    />
   );
 }
 
@@ -44,7 +63,10 @@ export function CardDescription({
   ...props
 }: HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={cn("text-sm text-texto-2", className)} {...props} />
+    <p
+      className={cn("max-w-[68ch] text-sm text-texto-2", className)}
+      {...props}
+    />
   );
 }
 

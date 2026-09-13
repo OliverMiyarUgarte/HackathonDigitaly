@@ -5,7 +5,6 @@ import {
   ClipboardList,
   FileHeart,
   Home,
-  Users,
 } from "lucide-react";
 import type { UserRole } from "@/lib/contracts";
 
@@ -26,7 +25,6 @@ export const NAV_ITEMS: Record<UserRole, readonly NavItem[]> = {
   doctor: [
     { label: "Início", href: "/medico", icon: Home },
     { label: "Atendimentos", href: "/medico/atendimentos", icon: ClipboardList },
-    { label: "Pacientes", href: "/medico/pacientes", icon: Users },
     { label: "Prontuário", href: "/medico/prontuario", icon: FileHeart },
   ],
 };

@@ -88,8 +88,8 @@ export function CopilotPanel({
     >
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Sparkles aria-hidden="true" className="size-4 text-celeste-500" />
-          <h3 className="text-base font-medium text-texto">Copiloto</h3>
+          <Sparkles aria-hidden="true" className="size-4 text-accent" />
+          <h2 className="text-base font-medium text-texto">Copiloto</h2>
         </div>
         <Badge
           variant={AI_STATUS_VARIANT[aiStatus]}
@@ -104,7 +104,7 @@ export function CopilotPanel({
         <div className="flex items-center gap-3">
           <Button
             size="sm"
-            variant={isStreaming ? "secondary" : "primary"}
+            variant="secondary"
             onClick={isStreaming ? onStopAudio : onStartAudio}
             data-testid="toggle-copilot-audio"
             data-streaming={isStreaming ? "true" : "false"}
@@ -150,7 +150,7 @@ export function CopilotPanel({
       ) : null}
 
       <div className="flex flex-col gap-3">
-        <h4 className="text-sm font-medium text-texto-2">Transcrição</h4>
+        <h3 className="text-sm font-medium text-texto-2">Transcrição</h3>
         {partial || segments.length > 0 ? (
           <div className="max-h-56 overflow-y-auto rounded-md border border-borda bg-bg p-3 text-sm">
             {segments.map((segment) => (
@@ -181,7 +181,7 @@ export function CopilotPanel({
       </div>
 
       <div className="flex flex-col gap-3">
-        <h4 className="text-sm font-medium text-texto-2">Insights</h4>
+        <h3 className="text-sm font-medium text-texto-2">Insights</h3>
         {insights.length === 0 ? (
           <EmptyState
             icon={AlertTriangle}
@@ -227,7 +227,7 @@ export function CopilotPanel({
 
       {suggestedActions.length > 0 ? (
         <div className="flex flex-col gap-2">
-          <h4 className="text-sm font-medium text-texto-2">Ações sugeridas</h4>
+          <h3 className="text-sm font-medium text-texto-2">Ações sugeridas</h3>
           <div className="flex flex-wrap gap-2">
             {suggestedActions.map((action) => (
               <Badge key={action} variant="brand">

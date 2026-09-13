@@ -24,6 +24,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Stepper } from "@/components/ui/stepper";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, get, post } from "@/lib/api";
@@ -39,7 +40,7 @@ import { formatCrm, formatDateTimeWithContext, formatTime } from "@/lib/format";
 import { groupSlotsByDay, PRE_CONSULT_QUESTIONS } from "@/lib/appointments";
 import { useAsync, useAsyncWithKey, useToast } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import { ErrorState } from "./section-states";
+import { ErrorState, ListSkeleton } from "./section-states";
 
 const doctorListSchema = z.array(doctorSummaryDtoSchema);
 const slotListSchema = z.array(slotSchema);
@@ -219,10 +220,10 @@ export function BookingWizard() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium text-texto">Agendar consulta</h2>
+      <div className="flex flex-col gap-2">
+        <h1 className="max-w-[68ch] text-balance text-texto">Agendar consulta</h1>
         <p className="max-w-[68ch] text-texto-2">
-          Escolha o médico, selecione um horário disponível, responda a
+          Escolha o médico, selecione um horário disponível, responda à
           pré-consulta se quiser e confirme o agendamento.
         </p>
       </div>
@@ -234,8 +235,8 @@ export function BookingWizard() {
           <CardHeader>
             <CardTitle className="text-lg">Escolha o médico</CardTitle>
             <CardDescription>
-              Filtre por especialidade ou busque pelo nome. A API lista apenas
-              profissionais ativos.
+              Filtre por especialidade ou busque pelo nome. Mostramos apenas
+              profissionais com agenda ativa.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -260,9 +261,7 @@ export function BookingWizard() {
             </div>
 
             {doctorsState.loading ? (
-              <p className="text-sm text-texto-3" role="status">
-                Carregando médicos...
-              </p>
+              <ListSkeleton items={4} />
             ) : doctorsState.error ? (
               <ErrorState
                 title="Não foi possível carregar os médicos"
@@ -350,9 +349,17 @@ export function BookingWizard() {
             ) : null}
 
             {slotsState.loading ? (
-              <p className="text-sm text-texto-3" role="status">
-                Carregando horários disponíveis...
-              </p>
+              <div className="flex flex-col gap-3" aria-hidden="true">
+                <Skeleton className="h-4 w-40" />
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                  {Array.from({ length: 12 }).map((_, index) => (
+                    <Skeleton
+                      key={index}
+                      className="h-9 rounded-pill"
+                    />
+                  ))}
+                </div>
+              </div>
             ) : slotsState.error ? (
               <ErrorState
                 title="Não foi possível carregar os horários"
@@ -374,9 +381,9 @@ export function BookingWizard() {
               <div className="flex flex-col gap-5">
                 {groupedSlots.map((group) => (
                   <div key={group.key} className="flex flex-col gap-2">
-                    <h4 className="text-sm font-medium text-texto-2">
+                    <h3 className="text-sm font-medium text-texto-2">
                       {group.label}
-                    </h4>
+                    </h3>
                     <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
                       {group.slots.map((slot) => {
                         const selected =

@@ -81,7 +81,7 @@ export function ConsultationHistory() {
                       <span className="inline-flex items-center gap-2 text-sm font-medium text-texto">
                         <Stethoscope
                           aria-hidden="true"
-                          className="size-4 text-celeste-500"
+                          className="size-4 text-accent"
                         />
                         {item.doctor.name}
                       </span>

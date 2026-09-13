@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  devIndicators: false,
   outputFileTracingRoot: path.join(__dirname, ".."),
   env: {
     NEXT_PUBLIC_API_URL:

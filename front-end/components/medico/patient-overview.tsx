@@ -14,6 +14,7 @@ import { AppointmentStatusBadge } from "@/components/paciente/appointment-status
 import {
   ErrorState,
   ListSkeleton,
+  LoadingIndicator,
   PageHeader,
 } from "@/components/paciente/section-states";
 import { Alert } from "@/components/ui/alert";
@@ -78,21 +79,27 @@ export function PatientOverview({
 
   if (overviewState.error instanceof ApiError && overviewState.error.status === 403) {
     return (
-      <Alert variant="warning" title="Sem vínculo com este paciente">
-        Você não possui atendimentos com este paciente e, por isso, não pode
-        acessar o prontuário. O acesso a dados de saúde só é permitido a
-        profissionais com vínculo de atendimento, conforme a LGPD.
-      </Alert>
+      <div className="flex flex-col gap-6">
+        <h1 className="text-texto">Paciente</h1>
+        <Alert variant="warning" title="Sem vínculo com este paciente">
+          Você não possui atendimentos com este paciente e, por isso, não pode
+          acessar o prontuário. O acesso a dados de saúde só é permitido a
+          profissionais com vínculo de atendimento, conforme a LGPD.
+        </Alert>
+      </div>
     );
   }
 
   if (overviewState.error || !overviewState.data) {
     return (
-      <ErrorState
-        title="Não foi possível carregar o paciente"
-        description="Os dados do paciente não puderam ser carregados. Tente novamente."
-        onRetry={overviewState.reload}
-      />
+      <div className="flex flex-col gap-6">
+        <h1 className="text-texto">Paciente</h1>
+        <ErrorState
+          title="Não foi possível carregar o paciente"
+          description="Os dados do paciente não puderam ser carregados. Tente novamente."
+          onRetry={overviewState.reload}
+        />
+      </div>
     );
   }
 
@@ -140,7 +147,7 @@ export function PatientOverview({
               <span className="inline-flex items-center gap-2 text-base font-medium text-texto">
                 <UserRound
                   aria-hidden="true"
-                  className="size-4 text-celeste-500"
+                  className="size-4 text-accent"
                 />
                 {overview.patient.name}
               </span>
@@ -166,9 +173,7 @@ export function PatientOverview({
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {appointmentState.loading ? (
-              <p className="text-sm text-texto-3" role="status">
-                Carregando atendimento...
-              </p>
+              <LoadingIndicator label="Carregando atendimento" />
             ) : appointmentState.error || !selectedAppointment ? (
               <p className="text-sm text-texto-2">
                 Não foi possível carregar este atendimento. Abra-o novamente
@@ -276,9 +281,7 @@ export function PatientOverview({
           </CardHeader>
           <CardContent>
             {preConsultState.loading ? (
-              <p className="text-sm text-texto-3" role="status">
-                Carregando respostas...
-              </p>
+              <LoadingIndicator label="Carregando respostas" />
             ) : (
               <PreConsultList
                 answers={preConsult}
@@ -347,7 +350,7 @@ export function PatientOverview({
           <div className="flex items-center gap-2">
             <ShieldCheck
               aria-hidden="true"
-              className="size-5 text-celeste-500"
+              className="size-5 text-accent"
             />
             <CardTitle className="text-lg">Privacidade e auditoria</CardTitle>
           </div>

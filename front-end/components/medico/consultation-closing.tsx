@@ -122,11 +122,14 @@ export function ConsultationClosing({
 
   if (contextState.error || !contextState.data) {
     return (
-      <ErrorState
-        title="Não foi possível carregar o atendimento"
-        description="O contexto desta consulta não pôde ser carregado. Tente novamente."
-        onRetry={contextState.reload}
-      />
+      <div className="flex flex-col gap-6">
+        <h1 className="text-texto">Fechamento do atendimento</h1>
+        <ErrorState
+          title="Não foi possível carregar o atendimento"
+          description="O contexto desta consulta não pôde ser carregado. Tente novamente."
+          onRetry={contextState.reload}
+        />
+      </div>
     );
   }
 
@@ -141,6 +144,7 @@ export function ConsultationClosing({
   if (created) {
     return (
       <div className="flex flex-col gap-6" data-testid="closing-success">
+        <h1 className="text-texto">Fechamento do atendimento</h1>
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -192,6 +196,7 @@ export function ConsultationClosing({
   if (existingRecord) {
     return (
       <div className="flex flex-col gap-6" data-testid="closing-record-exists">
+        <h1 className="text-texto">Fechamento do atendimento</h1>
         <Alert variant="info" title="Prontuário já registrado">
           <div className="flex flex-col items-start gap-3">
             <span>
@@ -312,6 +317,7 @@ export function ConsultationClosing({
   if (context.consultation.status === "active") {
     return (
       <div className="flex flex-col gap-6">
+        <h1 className="text-texto">Fechamento do atendimento</h1>
         <Alert variant="warning" title="Atendimento ainda em andamento">
           <div className="flex flex-col items-start gap-3">
             <span>
@@ -345,7 +351,7 @@ export function ConsultationClosing({
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <span className="inline-flex items-center gap-2 text-sm text-texto">
-            <UserRound aria-hidden="true" className="size-4 text-celeste-500" />
+            <UserRound aria-hidden="true" className="size-4 text-accent" />
             {context.overview.patient.name}
           </span>
           <span className="inline-flex items-center gap-2 font-data text-sm text-texto-2">

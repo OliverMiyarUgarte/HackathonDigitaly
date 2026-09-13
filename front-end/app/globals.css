@@ -73,6 +73,8 @@
   --dur-base: 200ms;
   --dur-lenta: 320ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --accent: var(--celeste-500);
 }
 
 [data-theme="dark"] {
@@ -86,6 +88,7 @@
   --texto-3: var(--grafite-500);
   --vidro: rgba(255, 255, 255, 0.05);
   --vidro-borda: rgba(255, 255, 255, 0.12);
+  --accent: var(--celeste-400);
 }
 
 [data-theme="light"] {
@@ -99,6 +102,7 @@
   --texto-3: var(--grafite-400);
   --vidro: rgba(255, 255, 255, 0.55);
   --vidro-borda: rgba(18, 20, 23, 0.08);
+  --accent: var(--celeste-600);
 }
 
 @theme inline {
@@ -137,6 +141,7 @@
   --color-alerta: var(--alerta);
   --color-erro: var(--erro);
   --color-info: var(--info);
+  --color-accent: var(--accent);
 
   --font-display: var(--fonte-display);
   --font-sans: var(--fonte-texto);

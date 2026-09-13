@@ -140,7 +140,7 @@ export function TabsTrigger({
       tabIndex={active ? 0 : -1}
       onClick={() => setValue(value)}
       className={cn(
-        "inline-flex h-8 items-center rounded-pill px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500",
+        "inline-flex h-8 items-center rounded-pill px-4 text-sm font-medium transition-colors max-sm:min-h-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500",
         active
           ? "bg-celeste-500 text-white"
           : "text-texto-2 hover:text-texto",

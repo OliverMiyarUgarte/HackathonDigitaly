@@ -28,7 +28,9 @@ export function PostCallSummary({
       <CardHeader>
         <div className="flex items-center gap-2">
           <CheckCircle2 aria-hidden="true" className="size-5 text-sucesso" />
-          <CardTitle>Atendimento encerrado</CardTitle>
+          <CardTitle level="h1" className="text-3xl">
+            Atendimento encerrado
+          </CardTitle>
         </div>
         <CardDescription>
           {counterpartLabel

@@ -9,7 +9,7 @@ import {
   ChevronRight,
   Clock,
   ExternalLink,
-  MapPin,
+  Stethoscope,
   Video,
 } from "lucide-react";
 import { AppointmentStatusBadge } from "@/components/paciente/appointment-status-badge";
@@ -138,6 +138,7 @@ export function PatientCalendar() {
     return (
       <li
         key={entry.appointmentId}
+        data-testid={`calendar-entry-${entry.appointmentId}`}
         className={cn(
           "flex flex-wrap items-start justify-between gap-3 rounded-lg border bg-bg-elev p-4",
           entry.isCurrent
@@ -157,7 +158,7 @@ export function PatientCalendar() {
             ) : null}
           </div>
           <span className="inline-flex items-center gap-2 text-xs text-texto-2">
-            <MapPin aria-hidden="true" className="size-3.5" />
+            <Stethoscope aria-hidden="true" className="size-3.5" />
             {entry.counterpart.specialty ?? "Especialidade não informada"}
           </span>
           <span className="inline-flex items-center gap-2 font-data text-xs text-texto-3">
@@ -279,14 +280,14 @@ export function PatientCalendar() {
                   <span
                     className={cn(
                       "font-data",
-                      isCurrent ? "text-celeste-500" : "text-texto-2",
+                      isCurrent ? "text-accent" : "text-texto-2",
                     )}
                   >
                     {cell.day}
                   </span>
                   {dayEntries.length > 0 ? (
                     <span
-                      className="inline-flex items-center gap-1 rounded-pill bg-celeste-500/14 px-2 py-0.5 font-data text-[10px] text-celeste-600 dark:text-celeste-400"
+                      className="inline-flex items-center gap-1 rounded-pill bg-celeste-500/14 px-2 py-0.5 font-data text-xs text-accent"
                       aria-label={`${dayEntries.length} consulta(s)`}
                     >
                       <CalendarDays aria-hidden="true" className="size-3" />
@@ -325,7 +326,7 @@ export function PatientCalendar() {
       ) : (
         <div className="flex flex-col gap-6">
           <section aria-label="Próximas consultas" className="flex flex-col gap-3">
-            <h3 className="text-lg font-medium text-texto">Próximas</h3>
+            <h2 className="text-xl font-medium text-texto">Próximas</h2>
             {upcoming.length === 0 ? (
               <p className="text-sm text-texto-2">
                 Nenhuma consulta futura neste mês.
@@ -341,7 +342,7 @@ export function PatientCalendar() {
             aria-label="Consultas anteriores"
             className="flex flex-col gap-3"
           >
-            <h3 className="text-lg font-medium text-texto">Anteriores</h3>
+            <h2 className="text-xl font-medium text-texto">Anteriores</h2>
             {previous.length === 0 ? (
               <p className="text-sm text-texto-2">
                 Nenhuma consulta anterior neste mês.

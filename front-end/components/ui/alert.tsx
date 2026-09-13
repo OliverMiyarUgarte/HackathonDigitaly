@@ -68,7 +68,7 @@ export function Alert({
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium text-texto">{title}</p>
         {children ? (
-          <div className="text-sm text-texto-2">{children}</div>
+          <div className="max-w-[68ch] text-sm text-texto-2">{children}</div>
         ) : null}
       </div>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent } from "react";
-import { Download, FileText, Paperclip, Upload } from "lucide-react";
+import { Download, FileText, Loader2, Paperclip, Upload } from "lucide-react";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -99,8 +99,8 @@ export function AttachmentPanel({
     >
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Paperclip aria-hidden="true" className="size-4 text-celeste-500" />
-          <h3 className="text-base font-medium text-texto">Anexos</h3>
+          <Paperclip aria-hidden="true" className="size-4 text-accent" />
+          <h2 className="text-base font-medium text-texto">Anexos</h2>
         </div>
         <input
           ref={inputRef}
@@ -128,7 +128,17 @@ export function AttachmentPanel({
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-texto-3">Carregando anexos...</p>
+        <p
+          role="status"
+          aria-live="polite"
+          className="inline-flex items-center gap-2 text-sm text-texto-3"
+        >
+          <Loader2
+            aria-hidden="true"
+            className="size-4 animate-spin text-accent"
+          />
+          Carregando anexos
+        </p>
       ) : attachments.length === 0 ? (
         <EmptyState
           icon={FileText}

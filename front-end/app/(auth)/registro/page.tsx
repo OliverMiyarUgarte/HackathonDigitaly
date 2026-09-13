@@ -115,7 +115,9 @@ export default function RegistroPage() {
   return (
     <Card variant="glass">
       <CardHeader>
-        <CardTitle>Criar conta de paciente</CardTitle>
+        <CardTitle level="h1" className="text-3xl">
+          Criar conta de paciente
+        </CardTitle>
         <CardDescription>
           Preencha os dados para agendar consultas e acompanhar seu histórico.
         </CardDescription>
@@ -177,7 +179,7 @@ export default function RegistroPage() {
                 type="button"
                 onClick={() => setShowPassword((current) => !current)}
                 aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                className="inline-flex size-8 items-center justify-center rounded-pill text-texto-3 transition-colors hover:text-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
+                className="inline-flex size-10 items-center justify-center rounded-pill text-texto-3 transition-colors hover:text-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
               >
                 {showPassword ? (
                   <EyeOff aria-hidden="true" className="size-4" />
@@ -203,6 +205,7 @@ export default function RegistroPage() {
             type="submit"
             size="lg"
             disabled={submitting}
+            aria-busy={submitting}
             className="w-full"
           >
             {submitting ? "Criando conta..." : "Criar conta"}
@@ -216,7 +219,7 @@ export default function RegistroPage() {
           Já tem conta?{" "}
           <Link
             href="/entrar"
-            className="font-medium text-celeste-500 hover:underline"
+            className="font-medium text-accent hover:underline"
           >
             Entrar na plataforma
           </Link>

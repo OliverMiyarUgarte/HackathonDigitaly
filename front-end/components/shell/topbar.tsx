@@ -8,11 +8,50 @@ import { Logo } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/brand/theme-toggle";
 import { Avatar } from "@/components/ui/avatar";
 import { useSession } from "@/lib/auth";
+import { useRealtime } from "@/lib/realtime/socket-context";
+import type { RealtimeConnectionState } from "@/lib/realtime/types";
+import { cn } from "@/lib/utils";
 import { isNavItemActive, type NavItem } from "./nav-config";
 
 export interface TopbarProps {
   items: readonly NavItem[];
   onOpenSidebar: () => void;
+}
+
+const CONNECTION_LABEL: Record<RealtimeConnectionState, string> = {
+  idle: "Sem conexão em tempo real",
+  connecting: "Conectando",
+  connected: "Conectado",
+  reconnecting: "Reconectando",
+  failed: "Conexão em tempo real indisponível",
+};
+
+const CONNECTION_DOT: Record<RealtimeConnectionState, string> = {
+  idle: "bg-texto-3",
+  connecting: "bg-alerta motion-safe:animate-pulse",
+  connected: "bg-sucesso",
+  reconnecting: "bg-alerta motion-safe:animate-pulse",
+  failed: "bg-erro",
+};
+
+function RealtimeStatus() {
+  const { connectionState } = useRealtime();
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      data-testid="realtime-status"
+      data-state={connectionState}
+      title={CONNECTION_LABEL[connectionState]}
+      className="inline-flex items-center gap-1.5 rounded-pill border border-borda px-2.5 py-1 text-xs text-texto-2 max-sm:px-2"
+    >
+      <span
+        aria-hidden="true"
+        className={cn("size-1.5 rounded-full", CONNECTION_DOT[connectionState])}
+      />
+      <span className="max-sm:sr-only">{CONNECTION_LABEL[connectionState]}</span>
+    </span>
+  );
 }
 
 export function Topbar({ items, onOpenSidebar }: TopbarProps) {
@@ -71,11 +110,12 @@ export function Topbar({ items, onOpenSidebar }: TopbarProps) {
           <Logo />
         </Link>
 
-        <h1 className="hidden text-lg font-medium text-texto sm:block">
+        <p className="hidden text-sm font-medium text-texto-2 sm:block">
           {title}
-        </h1>
+        </p>
 
         <div className="ml-auto flex items-center gap-2">
+          <RealtimeStatus />
           <ThemeToggle />
           <div className="relative" ref={menuRef}>
             <button
@@ -83,7 +123,7 @@ export function Topbar({ items, onOpenSidebar }: TopbarProps) {
               onClick={() => setMenuOpen((open) => !open)}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
-              className="flex items-center gap-2 rounded-pill p-1 pr-2 transition-colors hover:bg-bg-elev-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
+              className="flex min-h-10 items-center gap-2 rounded-pill p-1 pr-2 transition-colors hover:bg-bg-elev-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
             >
               <Avatar name={user?.name ?? "Usuário"} size="sm" />
               <ChevronDown aria-hidden="true" className="size-4 text-texto-3" />

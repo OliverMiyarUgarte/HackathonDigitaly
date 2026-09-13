@@ -96,7 +96,7 @@ export function MedicalRecordOverview() {
                 <Avatar name={overview.patient.name} size="lg" />
                 <div className="flex flex-col gap-1">
                   <span className="inline-flex items-center gap-2 text-base font-medium text-texto">
-                    <UserRound aria-hidden="true" className="size-4 text-celeste-500" />
+                    <UserRound aria-hidden="true" className="size-4 text-accent" />
                     {overview.patient.name}
                   </span>
                   <span className="inline-flex items-center gap-2 text-sm text-texto-2">
@@ -239,7 +239,7 @@ export function MedicalRecordOverview() {
               <div className="flex items-center gap-2">
                 <ShieldCheck
                   aria-hidden="true"
-                  className="size-5 text-celeste-500"
+                  className="size-5 text-accent"
                 />
                 <CardTitle className="text-lg">
                   Privacidade e acesso

@@ -31,10 +31,13 @@ export function ConsultationRoomPage({
 
   if (state.error || !state.data) {
     return (
-      <Alert variant="error" title="Atendimento indisponível">
-        Não foi possível localizar esta consulta. Volte à página inicial e
-        tente novamente.
-      </Alert>
+      <div className="flex flex-col gap-6">
+        <h1 className="text-texto">Atendimento indisponível</h1>
+        <Alert variant="error" title="Atendimento indisponível">
+          Não foi possível localizar esta consulta. Volte à página inicial e
+          tente novamente.
+        </Alert>
+      </div>
     );
   }
 
@@ -49,20 +52,23 @@ export function ConsultationRoomPage({
 
   if (role === "doctor" && state.data.status === "ended") {
     return (
-      <Alert variant="info" title="Atendimento encerrado">
-        <div className="flex flex-col items-start gap-3">
-          <span>
-            Este atendimento foi finalizado. Continue para registrar o
-            prontuário da consulta.
-          </span>
-          <Link
-            href={`/medico/consultas/${consultationId}/fechamento`}
-            className={buttonClasses({ variant: "primary" })}
-          >
-            Registrar prontuário
-          </Link>
-        </div>
-      </Alert>
+      <div className="flex flex-col gap-6">
+        <h1 className="text-texto">Atendimento encerrado</h1>
+        <Alert variant="info" title="Atendimento encerrado">
+          <div className="flex flex-col items-start gap-3">
+            <span>
+              Este atendimento foi finalizado. Continue para registrar o
+              prontuário da consulta.
+            </span>
+            <Link
+              href={`/medico/consultas/${consultationId}/fechamento`}
+              className={buttonClasses({ variant: "primary" })}
+            >
+              Registrar prontuário
+            </Link>
+          </div>
+        </Alert>
+      </div>
     );
   }
 

@@ -14,7 +14,9 @@ export default function RecuperarSenhaPage() {
   return (
     <Card variant="glass">
       <CardHeader>
-        <CardTitle>Recuperar acesso</CardTitle>
+        <CardTitle level="h1" className="text-3xl">
+          Recuperar acesso
+        </CardTitle>
         <CardDescription>
           A redefinição de senha ainda não está disponível nesta versão.
         </CardDescription>
@@ -29,7 +31,7 @@ export default function RecuperarSenhaPage() {
           <li className="flex items-start gap-3">
             <Mail
               aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-celeste-500"
+              className="mt-0.5 size-4 shrink-0 text-accent"
             />
             <span>
               Informe o e-mail da conta para o administrador localizar seu
@@ -39,7 +41,7 @@ export default function RecuperarSenhaPage() {
           <li className="flex items-start gap-3">
             <KeyRound
               aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-celeste-500"
+              className="mt-0.5 size-4 shrink-0 text-accent"
             />
             <span>
               Após a redefinição, entre com a nova senha e atualize seus dados

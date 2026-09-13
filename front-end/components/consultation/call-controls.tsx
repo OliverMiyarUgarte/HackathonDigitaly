@@ -32,7 +32,7 @@ export function CallControls({
   attachmentsOpen,
   isFullscreen,
   ending,
-  endLabel = "Encerrar atendimento",
+  endLabel = "Encerrar teleatendimento",
   onToggleMic,
   onToggleCamera,
   onToggleAttachments,

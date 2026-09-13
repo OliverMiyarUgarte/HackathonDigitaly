@@ -20,6 +20,11 @@ export function Stepper({ steps, current, className }: StepperProps) {
         className,
       )}
     >
+      <li className="sr-only" aria-live="polite">
+        {`Etapa ${current + 1} de ${steps.length}: ${
+          steps[current]?.label ?? ""
+        }`}
+      </li>
       {steps.map((step, index) => {
         const state =
           index < current ? "done" : index === current ? "current" : "upcoming";
@@ -36,7 +41,7 @@ export function Stepper({ steps, current, className }: StepperProps) {
                 state === "current"
                   ? "border-celeste-500 bg-celeste-500 text-white"
                   : state === "done"
-                    ? "border-celeste-500 text-celeste-500"
+                    ? "border-celeste-500 text-accent"
                     : "border-borda-forte text-texto-3",
               )}
             >

@@ -119,7 +119,7 @@ export function VideoStage({
         <div className="flex size-full flex-col items-center justify-center gap-3 text-texto-3">
           {connectionState === "connecting" ||
           connectionState === "reconnecting" ? (
-            <Loader2 aria-hidden="true" className="size-8 animate-spin text-celeste-500" />
+            <Loader2 aria-hidden="true" className="size-8 animate-spin text-accent" />
           ) : (
             <Video aria-hidden="true" className="size-8" />
           )}

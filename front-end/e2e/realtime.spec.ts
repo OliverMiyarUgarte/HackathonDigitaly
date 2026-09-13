@@ -6,9 +6,9 @@ import {
   int16ToBase64,
   PcmFrameBatcher,
 } from "../lib/realtime/pcm";
+import { readTokens, storageStatePath } from "./auth";
 
 const API_BASE = "http://localhost:3001/api";
-const DEMO_PASSWORD = "Demo@1234";
 
 test.describe("codificador PCM s16le", () => {
   test("converte float para 16 bits, base64, lotes e sequência", () => {
@@ -44,36 +44,11 @@ test.describe("codificador PCM s16le", () => {
   });
 });
 
-async function login(page: Page, email: string): Promise<string> {
-  let lastStatus = 0;
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const response = await page.request.post(`${API_BASE}/auth/login`, {
-      data: { email, password: DEMO_PASSWORD },
-    });
-    lastStatus = response.status();
-    if (response.ok()) {
-      const session = (await response.json()) as {
-        user: { role: "doctor" | "patient" };
-        tokens: { accessToken: string; refreshToken: string };
-      };
-      await page.goto("/entrar");
-      await page.evaluate((tokens) => {
-        window.localStorage.setItem("digitaly.accessToken", tokens.accessToken);
-        window.localStorage.setItem("digitaly.refreshToken", tokens.refreshToken);
-      }, session.tokens);
-      await page.goto(session.user.role === "doctor" ? "/medico" : "/paciente");
-      await expect(
-        page.locator('[data-testid="realtime-state"]'),
-      ).toHaveAttribute("data-state", "connected", { timeout: 30000 });
-      return session.tokens.accessToken;
-    }
-    if (lastStatus === 429) {
-      await page.waitForTimeout(15000);
-      continue;
-    }
-    break;
-  }
-  throw new Error(`Login falhou para ${email} (HTTP ${lastStatus})`);
+async function openRole(page: Page, home: "/medico" | "/paciente"): Promise<void> {
+  await page.goto(home);
+  await expect(
+    page.locator('[data-testid="realtime-state"]'),
+  ).toHaveAttribute("data-state", "connected", { timeout: 30000 });
 }
 
 interface DoctorAppointmentResponse {
@@ -166,15 +141,17 @@ test.describe("sala de teleconsulta", () => {
 
     const doctorContext = await browser.newContext({
       permissions: ["camera", "microphone"],
+      storageState: storageStatePath("doctor"),
     });
     const patientContext = await browser.newContext({
       permissions: ["camera", "microphone"],
+      storageState: storageStatePath("patient"),
     });
     const doctorPage = await doctorContext.newPage();
     const patientPage = await patientContext.newPage();
 
-    await login(patientPage, "paciente@digitaly.health");
-    const doctorToken = await login(doctorPage, "medico@digitaly.health");
+    await openRole(patientPage, "/paciente");
+    const doctorToken = readTokens("doctor").accessToken;
 
     const worklet = await doctorPage.request.get(
       "http://localhost:3000/worklets/pcm-capture-processor.js",

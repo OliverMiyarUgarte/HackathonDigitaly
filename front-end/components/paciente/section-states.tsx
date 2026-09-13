@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,8 +13,8 @@ export interface PageHeaderProps {
 export function PageHeader({ title, description, action }: PageHeaderProps) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-medium text-texto">{title}</h2>
+      <div className="flex flex-col gap-2">
+        <h1 className="max-w-[68ch] text-balance text-texto">{title}</h1>
         {description ? (
           <p className="max-w-[68ch] text-texto-2">{description}</p>
         ) : null}
@@ -48,6 +48,19 @@ export function ErrorState({
         ) : undefined
       }
     />
+  );
+}
+
+export function LoadingIndicator({ label }: { label: string }) {
+  return (
+    <p
+      role="status"
+      aria-live="polite"
+      className="inline-flex items-center gap-2 text-sm text-texto-3"
+    >
+      <Loader2 aria-hidden="true" className="size-4 animate-spin text-accent" />
+      {label}
+    </p>
   );
 }
 

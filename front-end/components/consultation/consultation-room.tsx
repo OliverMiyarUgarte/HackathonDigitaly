@@ -238,11 +238,11 @@ export function ConsultationRoom({
       className="flex flex-col gap-6"
     >
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-medium text-texto">
+        <div className="flex flex-col gap-2">
+          <h1 className="max-w-[68ch] text-balance text-texto">
             Atendimento com {counterpartLabel}
-          </h2>
-          <p className="text-sm text-texto-2">
+          </h1>
+          <p className="max-w-[68ch] text-sm text-texto-2">
             {role === "doctor"
               ? "Conduza a consulta com apoio do copiloto."
               : "Mantenha a câmera e o microfone ativos para a consulta."}
@@ -300,11 +300,7 @@ export function ConsultationRoom({
               attachmentsOpen={attachmentsOpen}
               isFullscreen={isFullscreen}
               ending={ending}
-              endLabel={
-                role === "doctor"
-                  ? "Encerrar consulta"
-                  : "Encerrar atendimento"
-              }
+              endLabel="Encerrar teleatendimento"
               onToggleMic={room.toggleMic}
               onToggleCamera={room.toggleCamera}
               onToggleAttachments={() => setAttachmentsOpen((open) => !open)}
@@ -345,7 +341,7 @@ export function ConsultationRoom({
       <Dialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title={role === "doctor" ? "Encerrar consulta" : "Encerrar atendimento"}
+        title="Encerrar teleatendimento"
         description="O atendimento será finalizado para todos os participantes."
         footer={
           <>

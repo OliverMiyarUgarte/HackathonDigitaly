@@ -4,10 +4,11 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
-  retries: 1,
+  // The suite mutates the shared seeded database and the media room, so files run serially.
   workers: 1,
   timeout: 120_000,
   reporter: "list",
+  globalSetup: "./e2e/global-setup.ts",
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",

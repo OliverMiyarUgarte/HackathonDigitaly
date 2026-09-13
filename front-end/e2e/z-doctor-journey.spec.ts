@@ -1,15 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readTokens, storageStatePath, type SessionTokens } from "./auth";
 
 const API_BASE = "http://localhost:3001/api";
 const MAILHOG_MESSAGES = "http://localhost:8025/api/v2/messages";
-const DEMO_PASSWORD = "Demo@1234";
-const DOCTOR_EMAIL = "medico2@digitaly.health";
 const PATIENT_EMAIL = "paciente2@digitaly.health";
-
-interface SessionTokens {
-  accessToken: string;
-  refreshToken: string;
-}
 
 interface UserSummary {
   id: string;
@@ -52,54 +46,25 @@ interface MailHogResponse {
   items?: MailHogMessage[];
 }
 
+test.use({ storageState: storageStatePath("doctor2") });
+
 test.describe.configure({ mode: "serial" });
 
 let sharedDoctorTokens: SessionTokens | null = null;
 let sharedPatientTokens: SessionTokens | null = null;
 
-async function login(page: Page, email: string): Promise<SessionTokens> {
-  let lastStatus = 0;
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const response = await page.request.post(`${API_BASE}/auth/login`, {
-      data: { email, password: DEMO_PASSWORD },
-    });
-    lastStatus = response.status();
-    if (response.ok()) {
-      const session = (await response.json()) as { tokens: SessionTokens };
-      return session.tokens;
-    }
-    if (lastStatus === 429) {
-      await page.waitForTimeout(20000);
-      continue;
-    }
-    break;
-  }
-  throw new Error(`Login falhou para ${email} (HTTP ${lastStatus})`);
+function doctorSession(): SessionTokens {
+  sharedDoctorTokens = sharedDoctorTokens ?? readTokens("doctor2");
+  return sharedDoctorTokens;
+}
+
+function patientSession(): SessionTokens {
+  sharedPatientTokens = sharedPatientTokens ?? readTokens("patient2");
+  return sharedPatientTokens;
 }
 
 function authHeaders(token: string): { Authorization: string } {
   return { Authorization: `Bearer ${token}` };
-}
-
-async function storeSession(page: Page, tokens: SessionTokens): Promise<void> {
-  await page.addInitScript((session) => {
-    window.localStorage.setItem("digitaly.accessToken", session.accessToken);
-    window.localStorage.setItem(
-      "digitaly.refreshToken",
-      session.refreshToken,
-    );
-  }, tokens);
-}
-
-async function readBrowserTokens(page: Page): Promise<SessionTokens | null> {
-  const stored = await page.evaluate(() => ({
-    accessToken: window.localStorage.getItem("digitaly.accessToken"),
-    refreshToken: window.localStorage.getItem("digitaly.refreshToken"),
-  }));
-  if (!stored.accessToken || !stored.refreshToken) {
-    return null;
-  }
-  return { accessToken: stored.accessToken, refreshToken: stored.refreshToken };
 }
 
 async function getMe(page: Page, token: string): Promise<UserSummary> {
@@ -160,7 +125,7 @@ async function requestCode(
   token: string,
   appointmentId: string,
 ): Promise<void> {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     const response = await page.request.post(
       `${API_BASE}/appointments/${appointmentId}/request-code`,
       { headers: authHeaders(token) },
@@ -169,7 +134,7 @@ async function requestCode(
       return;
     }
     if (response.status() === 429) {
-      await page.waitForTimeout(15000);
+      await page.waitForTimeout(61_000);
       continue;
     }
     throw new Error(`request-code falhou (HTTP ${response.status()})`);
@@ -251,7 +216,6 @@ async function latestMessageId(page: Page): Promise<string | null> {
 async function ensureConfirmedAppointment(
   page: Page,
   doctorToken: string,
-  getPatientToken: () => Promise<SessionTokens>,
 ): Promise<{
   appointment: DoctorAppointment;
   created: boolean;
@@ -265,7 +229,7 @@ async function ensureConfirmedAppointment(
     return { appointment: existing, created: false, patientToken: null };
   }
 
-  const patientToken = await getPatientToken();
+  const patientToken = patientSession();
   const doctor = await getMe(page, doctorToken);
   const slots = await listSlots(page, patientToken.accessToken, doctor.id);
   const candidates = slots.filter(
@@ -333,26 +297,14 @@ test("médico inicia o atendimento, encerra, registra o prontuário e o vê no p
 }) => {
   test.setTimeout(240_000);
 
-  await page.goto("/entrar");
-  await page.getByLabel("E-mail", { exact: true }).fill(DOCTOR_EMAIL);
-  await page.getByLabel("Senha", { exact: true }).fill(DEMO_PASSWORD);
-  await page.getByRole("button", { name: /entrar na plataforma/i }).click();
-
-  await expect(page).toHaveURL(/\/medico$/, { timeout: 30000 });
+  const doctorTokens = doctorSession();
+  await page.goto("/medico");
   await expect(page.getByTestId("doctor-home")).toBeVisible({
     timeout: 30000,
   });
 
-  const doctorTokens = await readBrowserTokens(page);
-  if (!doctorTokens) {
-    throw new Error("Sessão do médico não foi persistida após o login.");
-  }
-  sharedDoctorTokens = doctorTokens;
-
   const { appointment, created, patientToken } =
-    await ensureConfirmedAppointment(page, doctorTokens.accessToken, () =>
-      login(page, PATIENT_EMAIL),
-    );
+    await ensureConfirmedAppointment(page, doctorTokens.accessToken);
   if (patientToken) {
     sharedPatientTokens = patientToken;
   }
@@ -368,7 +320,7 @@ test("médico inicia o atendimento, encerra, registra o prontuário e o vê no p
       .fill(saoPauloDateKey(appointment.scheduledAt));
 
     const actionCell = page.locator(
-      `[data-testid="appointment-actions"][data-appointment-id="${appointment.appointmentId}"]`,
+      `[data-testid="appointment-actions"][data-appointment-id="${appointment.appointmentId}"]:visible`,
     );
     await expect(actionCell).toBeVisible({ timeout: 30000 });
     await actionCell
@@ -487,10 +439,8 @@ test("médico inicia o atendimento, encerra, registra o prontuário e o vê no p
 test("CONSULTATION_EXISTS abre a sala já existente", async ({ page }) => {
   test.setTimeout(120_000);
 
-  const doctorToken =
-    sharedDoctorTokens ?? (await login(page, DOCTOR_EMAIL));
+  const doctorToken = doctorSession();
   sharedDoctorTokens = doctorToken;
-  await storeSession(page, doctorToken);
 
   const appointmentId = "aaaaaaaa-0000-4000-8000-000000000001";
   const consultationId = "bbbbbbbb-0000-4000-8000-000000000002";
@@ -555,7 +505,7 @@ test("CONSULTATION_EXISTS abre a sala já existente", async ({ page }) => {
   });
 
   const actionCell = page.locator(
-    `[data-testid="appointment-actions"][data-appointment-id="${appointmentId}"]`,
+    `[data-testid="appointment-actions"][data-appointment-id="${appointmentId}"]:visible`,
   );
   await expect(actionCell).toBeVisible({ timeout: 30000 });
   await actionCell
@@ -572,18 +522,19 @@ test("CONSULTATION_EXISTS abre a sala já existente", async ({ page }) => {
   );
 });
 
-test("paciente não acessa rotas do médico", async ({ page }) => {
-  const patientToken =
-    sharedPatientTokens ?? (await login(page, PATIENT_EMAIL));
-  sharedPatientTokens = patientToken;
-  await storeSession(page, patientToken);
+test.describe("permissões do paciente", () => {
+  test.use({ storageState: storageStatePath("patient2") });
 
-  await page.goto("/medico");
-  await expect(page).toHaveURL(/\/paciente$/, { timeout: 30000 });
+  test("paciente não acessa rotas do médico", async ({ page }) => {
+    patientSession();
 
-  await page.goto("/medico/atendimentos");
-  await expect(page).toHaveURL(/\/paciente$/, { timeout: 30000 });
+    await page.goto("/medico");
+    await expect(page).toHaveURL(/\/paciente$/, { timeout: 30000 });
 
-  await page.goto("/medico/prontuario");
-  await expect(page).toHaveURL(/\/paciente$/, { timeout: 30000 });
+    await page.goto("/medico/atendimentos");
+    await expect(page).toHaveURL(/\/paciente$/, { timeout: 30000 });
+
+    await page.goto("/medico/prontuario");
+    await expect(page).toHaveURL(/\/paciente$/, { timeout: 30000 });
+  });
 });

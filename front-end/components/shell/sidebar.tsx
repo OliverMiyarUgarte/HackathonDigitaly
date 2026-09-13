@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
+import { useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { isNavItemActive, type NavItem } from "./nav-config";
 
@@ -17,6 +18,8 @@ export interface SidebarProps {
 
 export function Sidebar({ items, open, onClose, label }: SidebarProps) {
   const pathname = usePathname();
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const hidden = !open && !isDesktop;
 
   useEffect(() => {
     if (!open) {
@@ -27,8 +30,11 @@ export function Sidebar({ items, open, onClose, label }: SidebarProps) {
         onClose();
       }
     };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKeyDown);
     return () => {
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [open, onClose]);
@@ -38,6 +44,7 @@ export function Sidebar({ items, open, onClose, label }: SidebarProps) {
       <button
         type="button"
         aria-label="Fechar menu"
+        aria-hidden={open ? undefined : true}
         tabIndex={open ? 0 : -1}
         onClick={onClose}
         className={cn(
@@ -47,8 +54,10 @@ export function Sidebar({ items, open, onClose, label }: SidebarProps) {
       />
       <aside
         aria-label={label}
+        aria-hidden={hidden || undefined}
+        inert={hidden || undefined}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-borda bg-bg-elev p-4 transition-transform duration-300 ease-brand lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-[280px] max-w-[85vw] flex-col overflow-y-auto border-r border-borda bg-bg-elev p-4 transition-transform duration-300 ease-brand lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -58,7 +67,7 @@ export function Sidebar({ items, open, onClose, label }: SidebarProps) {
             type="button"
             onClick={onClose}
             aria-label="Fechar menu"
-            className="inline-flex size-8 items-center justify-center rounded-pill text-texto-2 transition-colors hover:bg-bg-elev-2 hover:text-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500 lg:hidden"
+            className="inline-flex size-10 items-center justify-center rounded-pill text-texto-2 transition-colors hover:bg-bg-elev-2 hover:text-texto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500 lg:hidden"
           >
             <X aria-hidden="true" className="size-4" />
           </button>

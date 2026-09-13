@@ -46,20 +46,26 @@ export function MedicalRecordDetail({ recordId }: MedicalRecordDetailProps) {
 
   if (recordState.error instanceof ApiError && recordState.error.status === 403) {
     return (
-      <Alert variant="warning" title="Sem vínculo com este paciente">
-        Você não possui atendimentos com o paciente deste prontuário. O acesso
-        é permitido apenas a profissionais com vínculo de atendimento.
-      </Alert>
+      <div className="flex flex-col gap-6">
+        <h1 className="text-texto">Registro médico</h1>
+        <Alert variant="warning" title="Sem vínculo com este paciente">
+          Você não possui atendimentos com o paciente deste prontuário. O
+          acesso é permitido apenas a profissionais com vínculo de atendimento.
+        </Alert>
+      </div>
     );
   }
 
   if (recordState.error || !recordState.data) {
     return (
-      <ErrorState
-        title="Prontuário não encontrado"
-        description="Não foi possível carregar este registro médico. Volte ao histórico e tente novamente."
-        onRetry={recordState.reload}
-      />
+      <div className="flex flex-col gap-6">
+        <h1 className="text-texto">Registro médico</h1>
+        <ErrorState
+          title="Prontuário não encontrado"
+          description="Não foi possível carregar este registro médico. Volte ao histórico e tente novamente."
+          onRetry={recordState.reload}
+        />
+      </div>
     );
   }
 

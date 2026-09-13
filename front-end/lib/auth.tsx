@@ -47,6 +47,39 @@ export interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+const CACHED_USER_KEY = "digitaly.user";
+
+function readCachedUser(): UserDto | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(CACHED_USER_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = userDtoSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedUser(user: UserDto | null): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    if (user) {
+      window.localStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
+    } else {
+      window.localStorage.removeItem(CACHED_USER_KEY);
+    }
+  } catch {
+    return;
+  }
+}
+
 function homePathFor(user: UserDto | null): string {
   return user?.role === "doctor" ? "/medico" : "/paciente";
 }
@@ -57,6 +90,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const loadProfile = useCallback(async (): Promise<UserDto> => {
     const profile = await apiGet("/auth/me", userDtoSchema);
+    writeCachedUser(profile);
     setUser(profile);
     setStatus("authenticated");
     return profile;
@@ -70,6 +104,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const refreshToken = getRefreshToken();
       if (!accessToken && !refreshToken) {
         return null;
+      }
+      const cached = readCachedUser();
+      if (cached && accessToken) {
+        return cached;
       }
       if (!accessToken && refreshToken) {
         const refreshed = await refreshAccessToken();
@@ -87,6 +125,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (profile) {
+          writeCachedUser(profile);
           setUser(profile);
           setStatus("authenticated");
         } else {
@@ -99,6 +138,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return;
         }
         clearTokens();
+        writeCachedUser(null);
         setUser(null);
         setStatus("unauthenticated");
       });
@@ -110,6 +150,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const applySession = useCallback((response: AuthResponseDto): UserDto => {
     setTokens(response.tokens);
+    writeCachedUser(response.user);
     setUser(response.user);
     setStatus("authenticated");
     return response.user;
@@ -144,6 +185,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       clearTokens();
     }
     clearTokens();
+    writeCachedUser(null);
     setUser(null);
     setStatus("unauthenticated");
   }, []);
@@ -157,6 +199,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return await loadProfile();
     } catch {
       clearTokens();
+      writeCachedUser(null);
       setUser(null);
       setStatus("unauthenticated");
       return null;

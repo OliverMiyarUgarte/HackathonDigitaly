@@ -5,11 +5,11 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "glass";
 export type ButtonSize = "sm" | "md" | "lg";
 
 const base =
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-pill font-medium transition-[background-color,border-color,color,box-shadow] duration-200 ease-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500 focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:pointer-events-none disabled:opacity-45 [&_svg]:size-4 [&_svg]:shrink-0";
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-pill font-medium transition-[background-color,border-color,color,box-shadow] duration-200 ease-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500 focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:pointer-events-none disabled:opacity-45 max-sm:min-h-10 [&_svg]:size-4 [&_svg]:shrink-0";
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "[background-image:var(--grad-marca)] text-white hover:shadow-[0_0_0_3px_rgba(0,159,255,0.22)]",
+    "[background-image:var(--grad-marca)] text-white shadow-[0_0_20px_-8px_rgba(0,159,255,0.55)] hover:shadow-[0_0_0_3px_rgba(0,159,255,0.22)]",
   secondary:
     "border border-borda-forte bg-transparent text-texto hover:border-celeste-500",
   ghost: "bg-transparent text-texto-2 hover:bg-bg-elev-2 hover:text-texto",

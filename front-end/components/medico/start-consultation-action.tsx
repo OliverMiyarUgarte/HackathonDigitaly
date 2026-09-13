@@ -174,7 +174,7 @@ export function StartConsultationAction({
         }
       >
         <p className="flex items-center gap-2 text-sm text-texto-2">
-          <LogIn aria-hidden="true" className="size-4 text-celeste-500" />
+          <LogIn aria-hidden="true" className="size-4 text-accent" />
           {appointment.patient.name} será notificado para entrar na sala.
         </p>
       </Dialog>

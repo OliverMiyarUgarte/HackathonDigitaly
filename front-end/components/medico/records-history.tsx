@@ -18,6 +18,7 @@ import {
   appointmentSchema,
   consultationHistoryListSchema,
   patientOverviewSchema,
+  userDtoSchema,
   type ConsultationHistoryItemDto,
 } from "@/lib/contracts";
 import {
@@ -63,6 +64,15 @@ export function RecordsHistory({ patientId = null }: RecordsHistoryProps) {
 
   const items = state.data ?? [];
   const visible = items.slice(0, MAX_ROWS);
+
+  const patientState = useAsyncWithKey(
+    () =>
+      patientId
+        ? get(`/users/patients/${patientId}`, userDtoSchema)
+        : Promise.resolve(null),
+    patientId ?? "",
+  );
+  const patientName = patientState.data?.name ?? null;
 
   const openRecord = async (
     item: ConsultationHistoryItemDto,
@@ -190,7 +200,9 @@ export function RecordsHistory({ patientId = null }: RecordsHistoryProps) {
 
       {patientId ? (
         <p className="text-xs text-texto-3">
-          Filtrando pelo paciente {patientId}.
+          {patientName
+            ? `Mostrando apenas os atendimentos de ${patientName}.`
+            : "Mostrando apenas os atendimentos do paciente selecionado."}
         </p>
       ) : null}
 
