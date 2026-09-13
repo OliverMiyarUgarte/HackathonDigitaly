@@ -131,6 +131,7 @@ export function useConsultationRoom({
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const pendingIceRef = useRef<IceEntry[]>([]);
+  const iceServersRef = useRef<IceServerDto[]>([]);
   const remoteParticipantsRef = useRef<Map<string, RoomParticipant>>(new Map());
   const makingOfferRef = useRef(false);
   const ignoreOfferRef = useRef(false);
@@ -244,6 +245,8 @@ export function useConsultationRoom({
         return;
       }
 
+      iceServersRef.current = payload.iceServers;
+
       const self = payload.participants.find(
         (participant: ParticipantDto) => participant.userId === selfId,
       );
@@ -307,9 +310,18 @@ export function useConsultationRoom({
       ) {
         return;
       }
-      const pc = pcRef.current;
+      let pc = pcRef.current;
       if (!pc) {
-        return;
+        const stream = localStreamRef.current;
+        if (!stream) {
+          return;
+        }
+        pc = ensurePeerConnection(iceServersRef.current);
+        for (const track of stream.getTracks()) {
+          if (!pc.getSenders().some((sender) => sender.track?.id === track.id)) {
+            pc.addTrack(track, stream);
+          }
+        }
       }
       try {
         const offerCollision =
@@ -317,6 +329,9 @@ export function useConsultationRoom({
         ignoreOfferRef.current = !polite && offerCollision;
         if (ignoreOfferRef.current) {
           return;
+        }
+        if (offerCollision) {
+          await pc.setLocalDescription({ type: "rollback" });
         }
         await pc.setRemoteDescription({ type: "offer", sdp: payload.sdp });
         await flushPendingIce(pc);

@@ -62,8 +62,10 @@
 
 	# Basic auth protects the UI only. /api and /socket.io are excluded so the
 	# app can send its Bearer JWT (basic auth consumes the Authorization header).
-	# Docs paths are excluded so they still return the 404 below.
-	@ui not path /api/* /socket.io/* /docs* /api/docs*
+	# Docs paths are excluded so they still return the 404 below. Static build
+	# assets are excluded too: some browsers do not replay basic-auth credentials
+	# on subresource requests, which leaves the app half-hydrated.
+	@ui not path /api/* /socket.io/* /docs* /api/docs* /_next/* /favicon.ico
 	basic_auth @ui {
 		{$DEMO_BASIC_AUTH_USER} {$DEMO_BASIC_AUTH_HASH}
 	}
