@@ -12,10 +12,12 @@ import {
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import {
+  ApiError,
   clearTokens,
   get as apiGet,
   getAccessToken,
   getRefreshToken,
+  onSessionExpired,
   post,
   refreshAccessToken,
   setTokens,
@@ -88,6 +90,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserDto | null>(null);
   const [status, setStatus] = useState<SessionStatus>("loading");
 
+  const clearSession = useCallback((): void => {
+    clearTokens();
+    writeCachedUser(null);
+    setUser(null);
+    setStatus("unauthenticated");
+  }, []);
+
   const loadProfile = useCallback(async (): Promise<UserDto> => {
     const profile = await apiGet("/auth/me", userDtoSchema);
     writeCachedUser(profile);
@@ -97,56 +106,82 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    return onSessionExpired(() => {
+      clearSession();
+    });
+  }, [clearSession]);
+
+  useEffect(() => {
     let active = true;
 
-    const start = async (): Promise<UserDto | null> => {
+    const applyProfile = (profile: UserDto): void => {
+      if (!active) {
+        return;
+      }
+      writeCachedUser(profile);
+      setUser(profile);
+      setStatus("authenticated");
+    };
+
+    const bootstrap = async (): Promise<void> => {
       const accessToken = getAccessToken();
       const refreshToken = getRefreshToken();
       if (!accessToken && !refreshToken) {
-        return null;
-      }
-      const cached = readCachedUser();
-      if (cached && accessToken) {
-        return cached;
-      }
-      if (!accessToken && refreshToken) {
-        const refreshed = await refreshAccessToken();
-        if (!refreshed) {
-          throw new Error("INVALID_REFRESH_TOKEN");
-        }
-      }
-      return apiGet("/auth/me", userDtoSchema);
-    };
-
-    Promise.resolve()
-      .then(start)
-      .then((profile) => {
-        if (!active) {
-          return;
-        }
-        if (profile) {
-          writeCachedUser(profile);
-          setUser(profile);
-          setStatus("authenticated");
-        } else {
+        if (active) {
           setUser(null);
           setStatus("unauthenticated");
         }
-      })
-      .catch(() => {
+        return;
+      }
+
+      const cached = readCachedUser();
+      if (cached) {
+        applyProfile(cached);
+      }
+
+      if (!accessToken && refreshToken) {
+        const refreshed = await refreshAccessToken();
         if (!active) {
           return;
         }
-        clearTokens();
-        writeCachedUser(null);
+        if (!refreshed) {
+          if (!getRefreshToken()) {
+            clearSession();
+            return;
+          }
+          if (!cached) {
+            setUser(null);
+            setStatus("unauthenticated");
+          }
+          return;
+        }
+      }
+
+      try {
+        const profile = await apiGet("/auth/me", userDtoSchema);
+        applyProfile(profile);
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        if (error instanceof ApiError && error.status === 401) {
+          clearSession();
+          return;
+        }
+        if (cached) {
+          return;
+        }
         setUser(null);
         setStatus("unauthenticated");
-      });
+      }
+    };
+
+    void bootstrap();
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [clearSession]);
 
   const applySession = useCallback((response: AuthResponseDto): UserDto => {
     setTokens(response.tokens);
@@ -182,13 +217,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         { auth: false },
       );
     } catch {
-      clearTokens();
+      clearSession();
+      return;
     }
-    clearTokens();
-    writeCachedUser(null);
-    setUser(null);
-    setStatus("unauthenticated");
-  }, []);
+    clearSession();
+  }, [clearSession]);
 
   const refresh = useCallback(async (): Promise<boolean> => {
     return refreshAccessToken();
@@ -197,14 +230,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const me = useCallback(async (): Promise<UserDto | null> => {
     try {
       return await loadProfile();
-    } catch {
-      clearTokens();
-      writeCachedUser(null);
-      setUser(null);
-      setStatus("unauthenticated");
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearSession();
+      }
       return null;
     }
-  }, [loadProfile]);
+  }, [loadProfile, clearSession]);
 
   const value = useMemo<SessionContextValue>(
     () => ({

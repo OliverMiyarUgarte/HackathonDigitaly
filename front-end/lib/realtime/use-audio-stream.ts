@@ -123,6 +123,13 @@ export function useAudioStream({
 
     try {
       const context = new AudioContext({ sampleRate: PCM_SAMPLE_RATE });
+      if (context.sampleRate !== PCM_SAMPLE_RATE) {
+        await context.close();
+        setError(
+          `O áudio do dispositivo está em ${context.sampleRate} Hz e o copiloto exige 16000 Hz. Desative o copiloto ou use um navegador compatível.`,
+        );
+        return;
+      }
       if (!context.audioWorklet) {
         await context.close();
         setError("Captura de áudio em tempo real indisponível neste navegador.");
@@ -137,7 +144,6 @@ export function useAudioStream({
 
       const batch = new PcmFrameBatcher(PCM_BATCH_SAMPLES);
       batcherRef.current = batch;
-      seqRef.current = 0;
       lastLevelAtRef.current = 0;
 
       const emitChunk = (samples: Float32Array): void => {
@@ -199,6 +205,8 @@ export function useAudioStream({
         socket?.emit("audio.end", { consultationId, seq: seqRef.current });
       }
       teardown();
+      setIsStreaming(false);
+      setLevel(0);
     };
   }, [consultationId, socket, teardown]);
 

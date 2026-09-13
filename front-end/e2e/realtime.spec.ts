@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import {
   buildAudioChunkPayload,
   computeRmsLevel,
@@ -139,96 +139,101 @@ test.describe("sala de teleconsulta", () => {
   }) => {
     test.setTimeout(180_000);
 
-    const doctorContext = await browser.newContext({
-      permissions: ["camera", "microphone"],
-      storageState: storageStatePath("doctor"),
-    });
-    const patientContext = await browser.newContext({
-      permissions: ["camera", "microphone"],
-      storageState: storageStatePath("patient"),
-    });
-    const doctorPage = await doctorContext.newPage();
-    const patientPage = await patientContext.newPage();
+    let doctorContext: BrowserContext | undefined;
+    let patientContext: BrowserContext | undefined;
 
-    await openRole(patientPage, "/paciente");
-    const doctorToken = readTokens("doctor").accessToken;
-
-    const worklet = await doctorPage.request.get(
-      "http://localhost:3000/worklets/pcm-capture-processor.js",
-    );
-    expect(worklet.ok()).toBeTruthy();
-
-    const consultation = await resolveConsultation(doctorPage, doctorToken);
-    const roomPath = `/medico/consultas/${consultation.consultationId}`;
-
-    if (consultation.fresh) {
-      await expect(
-        patientPage.getByText(/iniciou o atendimento/i),
-      ).toBeVisible({ timeout: 30000 });
-      await patientPage.getByRole("button", { name: /entrar na sala/i }).click();
-    } else {
-      test.info().annotations.push({
-        type: "nota",
-        description:
-          "Consulta já existente no banco; o aviso de consultation.started não é reemitido nesta execução.",
+    try {
+      doctorContext = await browser.newContext({
+        permissions: ["camera", "microphone"],
+        storageState: storageStatePath("doctor"),
       });
-      await patientPage.goto(
-        `/paciente/consultas/${consultation.consultationId}`,
+      patientContext = await browser.newContext({
+        permissions: ["camera", "microphone"],
+        storageState: storageStatePath("patient"),
+      });
+      const doctorPage = await doctorContext.newPage();
+      const patientPage = await patientContext.newPage();
+
+      await openRole(patientPage, "/paciente");
+      const doctorToken = readTokens("doctor").accessToken;
+
+      const worklet = await doctorPage.request.get(
+        "http://localhost:3000/worklets/pcm-capture-processor.js",
       );
+      expect(worklet.ok()).toBeTruthy();
+
+      const consultation = await resolveConsultation(doctorPage, doctorToken);
+      const roomPath = `/medico/consultas/${consultation.consultationId}`;
+
+      if (consultation.fresh) {
+        await expect(
+          patientPage.getByText(/iniciou o atendimento/i),
+        ).toBeVisible({ timeout: 30000 });
+        await patientPage.getByRole("button", { name: /entrar na sala/i }).click();
+      } else {
+        test.info().annotations.push({
+          type: "nota",
+          description:
+            "Consulta já existente no banco; o aviso de consultation.started não é reemitido nesta execução.",
+        });
+        await patientPage.goto(
+          `/paciente/consultas/${consultation.consultationId}`,
+        );
+      }
+
+      await doctorPage.goto(roomPath);
+
+      await expect(doctorPage.getByTestId("consultation-room")).toBeVisible();
+      await expect(patientPage.getByTestId("consultation-room")).toBeVisible();
+
+      await doctorPage.getByTestId("enter-room").click();
+      await patientPage.getByTestId("enter-room").click();
+
+      await expect(doctorPage.getByTestId("consultation-room")).toHaveAttribute(
+        "data-connection-state",
+        "connected",
+        { timeout: 60000 },
+      );
+      await expect(patientPage.getByTestId("consultation-room")).toHaveAttribute(
+        "data-connection-state",
+        "connected",
+        { timeout: 60000 },
+      );
+
+      await expect
+        .poll(() => remoteVideoTracks(doctorPage), { timeout: 30000 })
+        .toBeGreaterThan(0);
+      await expect
+        .poll(() => remoteVideoTracks(patientPage), { timeout: 30000 })
+        .toBeGreaterThan(0);
+
+      const doctorTileOnPatient = patientPage.locator(
+        '[data-testid="participant"][data-participant-role="doctor"]',
+      );
+      await expect(doctorTileOnPatient).toHaveAttribute("data-mic", "true", {
+        timeout: 30000,
+      });
+
+      await doctorPage.getByTestId("toggle-mic").click();
+      await expect(doctorTileOnPatient).toHaveAttribute("data-mic", "false", {
+        timeout: 30000,
+      });
+
+      await doctorPage.getByTestId("toggle-camera").click();
+      await expect(doctorTileOnPatient).toHaveAttribute("data-camera", "false", {
+        timeout: 30000,
+      });
+
+      await expect(doctorPage.getByTestId("copilot-panel")).toBeVisible();
+      await expect(patientPage.getByTestId("copilot-panel")).toHaveCount(0);
+
+      await doctorPage.getByTestId("toggle-mic").click();
+      await expect(doctorTileOnPatient).toHaveAttribute("data-mic", "true", {
+        timeout: 30000,
+      });
+    } finally {
+      await patientContext?.close();
+      await doctorContext?.close();
     }
-
-    await doctorPage.goto(roomPath);
-
-    await expect(doctorPage.getByTestId("consultation-room")).toBeVisible();
-    await expect(patientPage.getByTestId("consultation-room")).toBeVisible();
-
-    await doctorPage.getByTestId("enter-room").click();
-    await patientPage.getByTestId("enter-room").click();
-
-    await expect(doctorPage.getByTestId("consultation-room")).toHaveAttribute(
-      "data-connection-state",
-      "connected",
-      { timeout: 60000 },
-    );
-    await expect(patientPage.getByTestId("consultation-room")).toHaveAttribute(
-      "data-connection-state",
-      "connected",
-      { timeout: 60000 },
-    );
-
-    await expect
-      .poll(() => remoteVideoTracks(doctorPage), { timeout: 30000 })
-      .toBeGreaterThan(0);
-    await expect
-      .poll(() => remoteVideoTracks(patientPage), { timeout: 30000 })
-      .toBeGreaterThan(0);
-
-    const doctorTileOnPatient = patientPage.locator(
-      '[data-testid="participant"][data-participant-role="doctor"]',
-    );
-    await expect(doctorTileOnPatient).toHaveAttribute("data-mic", "true", {
-      timeout: 30000,
-    });
-
-    await doctorPage.getByTestId("toggle-mic").click();
-    await expect(doctorTileOnPatient).toHaveAttribute("data-mic", "false", {
-      timeout: 30000,
-    });
-
-    await doctorPage.getByTestId("toggle-camera").click();
-    await expect(doctorTileOnPatient).toHaveAttribute("data-camera", "false", {
-      timeout: 30000,
-    });
-
-    await expect(doctorPage.getByTestId("copilot-panel")).toBeVisible();
-    await expect(patientPage.getByTestId("copilot-panel")).toHaveCount(0);
-
-    await doctorPage.getByTestId("toggle-mic").click();
-    await expect(doctorTileOnPatient).toHaveAttribute("data-mic", "true", {
-      timeout: 30000,
-    });
-
-    await doctorContext.close();
-    await patientContext.close();
   });
 });

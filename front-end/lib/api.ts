@@ -11,11 +11,48 @@ export const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api"
 ).replace(/\/+$/, "");
 
+export const SESSION_EXPIRED_EVENT = "digitaly:session-expired";
+
 const ACCESS_TOKEN_KEY = "digitaly.accessToken";
 const REFRESH_TOKEN_KEY = "digitaly.refreshToken";
 
 let memoryAccessToken: string | null = null;
 let memoryRefreshToken: string | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
+let sessionExpiredEmitted = false;
+
+type SessionExpiredListener = () => void;
+
+const sessionExpiredListeners = new Set<SessionExpiredListener>();
+
+export function onSessionExpired(listener: SessionExpiredListener): () => void {
+  sessionExpiredListeners.add(listener);
+  return () => {
+    sessionExpiredListeners.delete(listener);
+  };
+}
+
+function notifySessionExpired(): void {
+  for (const listener of [...sessionExpiredListeners]) {
+    try {
+      listener();
+    } catch {
+      continue;
+    }
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
+}
+
+function expireSession(): void {
+  clearTokens();
+  if (sessionExpiredEmitted) {
+    return;
+  }
+  sessionExpiredEmitted = true;
+  notifySessionExpired();
+}
 
 function canUseStorage(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
@@ -58,6 +95,7 @@ export function getRefreshToken(): string | null {
 export function setTokens(tokens: AuthTokensDto): void {
   memoryAccessToken = tokens.accessToken;
   memoryRefreshToken = tokens.refreshToken;
+  sessionExpiredEmitted = false;
   writeStorage(ACCESS_TOKEN_KEY, tokens.accessToken);
   writeStorage(REFRESH_TOKEN_KEY, tokens.refreshToken);
 }
@@ -120,11 +158,12 @@ async function toApiError(response: Response): Promise<ApiError> {
   );
 }
 
-export async function refreshAccessToken(): Promise<boolean> {
+async function performRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) {
     return false;
   }
+
   let response: Response;
   try {
     response = await fetch(buildUrl("/auth/refresh"), {
@@ -135,17 +174,43 @@ export async function refreshAccessToken(): Promise<boolean> {
   } catch {
     return false;
   }
-  if (!response.ok) {
-    clearTokens();
+
+  if (response.ok) {
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      return false;
+    }
+    const parsed = authTokensSchema.safeParse(payload);
+    if (!parsed.success) {
+      return false;
+    }
+    setTokens(parsed.data);
+    return true;
+  }
+
+  if (response.status === 401) {
+    expireSession();
     return false;
   }
-  const parsed = authTokensSchema.safeParse(await response.json());
-  if (!parsed.success) {
-    clearTokens();
+
+  const error = await toApiError(response);
+  if (error.code === "INVALID_REFRESH_TOKEN") {
+    expireSession();
     return false;
   }
-  setTokens(parsed.data);
-  return true;
+  return false;
+}
+
+export function refreshAccessToken(): Promise<boolean> {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+  refreshInFlight = performRefresh().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
 }
 
 export interface ApiRequestOptions {

@@ -38,7 +38,7 @@ import { ErrorState, LoadingIndicator } from "./section-states";
 
 const CODE_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 30;
-const MAILHOG_URL = "http://localhost:8025";
+const MAILHOG_URL = process.env.NEXT_PUBLIC_MAILHOG_URL ?? "";
 const GENERIC_CODE_ERROR =
   "Código inválido ou expirado. Confira o código e tente novamente.";
 
@@ -423,20 +423,23 @@ export function ConfirmAppointment({
         </CardContent>
       </Card>
 
-      <Alert variant="info" title="Código de demonstração">
-        <span className="inline-flex flex-wrap items-center gap-2">
-          Em desenvolvimento, o e-mail com o código fica disponível no MailHog.
-          <a
-            href={MAILHOG_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
-          >
-            Abrir MailHog
-            <ExternalLink aria-hidden="true" className="size-3.5" />
-          </a>
-        </span>
-      </Alert>
+      {MAILHOG_URL ? (
+        <Alert variant="info" title="Código de demonstração">
+          <span className="inline-flex flex-wrap items-center gap-2">
+            Em desenvolvimento, o e-mail com o código fica disponível no
+            MailHog.
+            <a
+              href={MAILHOG_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+            >
+              Abrir MailHog
+              <ExternalLink aria-hidden="true" className="size-3.5" />
+            </a>
+          </span>
+        </Alert>
+      ) : null}
 
       <p className="inline-flex items-center gap-2 text-xs text-texto-3">
         <ShieldCheck aria-hidden="true" className="size-3.5" />

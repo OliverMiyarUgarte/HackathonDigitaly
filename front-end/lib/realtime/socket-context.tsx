@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getAccessToken, refreshAccessToken } from "@/lib/api";
+import { getAccessToken, onSessionExpired, refreshAccessToken } from "@/lib/api";
 import { useSession } from "@/lib/auth";
 import {
   connectRealtimeSocket,
@@ -57,6 +57,15 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     } finally {
       refreshingRef.current = false;
     }
+  }, []);
+
+  useEffect(() => {
+    return onSessionExpired(() => {
+      activeRef.current = false;
+      disconnectRealtimeSocket();
+      setSocket(null);
+      setConnectionState("idle");
+    });
   }, []);
 
   useEffect(() => {

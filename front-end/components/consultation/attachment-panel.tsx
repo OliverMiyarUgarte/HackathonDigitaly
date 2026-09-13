@@ -82,7 +82,9 @@ export function AttachmentPanel({
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(objectUrl);
+      window.setTimeout(() => {
+        URL.revokeObjectURL(objectUrl);
+      }, 0);
     } catch {
       setError("Não foi possível baixar o arquivo.");
     } finally {

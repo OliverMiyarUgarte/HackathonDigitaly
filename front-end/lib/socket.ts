@@ -3,13 +3,17 @@ import type {
   ClientToServerEvents,
   ServerToClientEvents,
 } from "@telemed/service-contracts";
-import { API_BASE_URL, getAccessToken } from "./api";
+import { API_BASE_URL, getAccessToken, onSessionExpired } from "./api";
 
 export type RealtimeSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 const SOCKET_ORIGIN = (process.env.NEXT_PUBLIC_SOCKET_URL ?? "").replace(/\/+$/, "");
 
 let socket: RealtimeSocket | null = null;
+
+onSessionExpired(() => {
+  disconnectRealtimeSocket();
+});
 
 function namespaceUrl(): string {
   if (SOCKET_ORIGIN) {

@@ -244,6 +244,16 @@ test("paciente agenda, confirma com código do MailHog e vê no calendário", as
 
     await waitForCodeInput(page);
 
+    const mailhogLink = page.getByRole("link", { name: /abrir mailhog/i });
+    if (process.env.NEXT_PUBLIC_MAILHOG_URL) {
+      await expect(mailhogLink).toHaveAttribute(
+        "href",
+        process.env.NEXT_PUBLIC_MAILHOG_URL,
+      );
+    } else {
+      await expect(mailhogLink).toHaveCount(0);
+    }
+
     const code = await waitForCode(page, previousMessageId);
     await page.getByTestId("code-input-0").click();
     await page.keyboard.type(code);

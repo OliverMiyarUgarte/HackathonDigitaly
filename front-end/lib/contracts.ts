@@ -1,26 +1,20 @@
 import { z } from "zod";
-import type {
-  AppointmentStatus as ContractAppointmentStatus,
-  AttachmentKind as ContractAttachmentKind,
-  ConsultationStatus as ContractConsultationStatus,
-  DependencyStatus as ContractDependencyStatus,
-  ErrorCode as ContractErrorCode,
-  FeedbackSeverity as ContractFeedbackSeverity,
-  HealthStatus as ContractHealthStatus,
-  UserRole as ContractUserRole,
+import {
+  APPOINTMENT_STATUSES,
+  PRE_CONSULT_QUESTION_KEYS,
+  USER_ROLES,
+  type AttachmentKind as ContractAttachmentKind,
+  type ConsultationStatus as ContractConsultationStatus,
+  type DependencyStatus as ContractDependencyStatus,
+  type ErrorCode as ContractErrorCode,
+  type FeedbackSeverity as ContractFeedbackSeverity,
+  type HealthStatus as ContractHealthStatus,
 } from "@telemed/service-contracts";
 
-export const USER_ROLES = ["doctor", "patient"] as const satisfies readonly ContractUserRole[];
+export { APPOINTMENT_STATUSES, PRE_CONSULT_QUESTION_KEYS, USER_ROLES };
 export type UserRole = (typeof USER_ROLES)[number];
 export const userRoleSchema = z.enum(USER_ROLES);
 
-export const APPOINTMENT_STATUSES = [
-  "pending_code",
-  "confirmed",
-  "in_progress",
-  "completed",
-  "cancelled",
-] as const satisfies readonly ContractAppointmentStatus[];
 export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 export const appointmentStatusSchema = z.enum(APPOINTMENT_STATUSES);
 
@@ -170,13 +164,7 @@ export const authResponseSchema = z.object({
 });
 export type AuthResponseDto = z.infer<typeof authResponseSchema>;
 
-export const preConsultQuestionKeySchema = z.enum([
-  "chief_complaint",
-  "symptom_duration",
-  "current_medications",
-  "allergies",
-  "medical_history",
-]);
+export const preConsultQuestionKeySchema = z.enum(PRE_CONSULT_QUESTION_KEYS);
 export type PreConsultQuestionKey = z.infer<typeof preConsultQuestionKeySchema>;
 
 export const preConsultAnswerInputSchema = z.object({
