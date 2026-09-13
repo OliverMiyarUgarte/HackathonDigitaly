@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
+RUN mkdir -p /models && chown -R app:app /models
+
 USER app
 
 EXPOSE 8000

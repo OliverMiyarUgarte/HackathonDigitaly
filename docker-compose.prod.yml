@@ -1,0 +1,284 @@
+# Digitaly single-VPS production stack.
+#
+# Operator notes:
+# - Run with: docker compose --env-file .env.production -f docker-compose.prod.yml ...
+# - Only `proxy` publishes ports. db/ai have no host port; web/api are reached
+#   through `proxy` over the private networks.
+# - `digitaly_internal` is an internal-only bridge (no egress). `digitaly_egress`
+#   is a normal bridge used only by services that need outbound internet
+#   (SMTP/OpenAI/ACME). db stays on the internal network only.
+# - Each service receives only the variables it needs; the `.env.production`
+#   file is used for interpolation, not mounted wholesale into every container.
+# - Sizing is a starting point for a 2 vCPU / 4 GB VPS; raise limits if the AI
+#   service runs Whisper locally, and keep an eye on `docker stats`.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-api-database-url: &api-database-url "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:?POSTGRES_DB is required}"
+
+services:
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - digitaly_caddy_data:/data
+      - digitaly_caddy_config:/config
+    depends_on:
+      - web
+      - api
+    networks:
+      - digitaly_internal
+      - digitaly_egress
+    logging: *default-logging
+
+  web:
+    build:
+      context: .
+      dockerfile: front-end/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+        NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:?NEXT_PUBLIC_SOCKET_URL is required}
+    image: digitaly-web:prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+      NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:?NEXT_PUBLIC_SOCKET_URL is required}
+    expose:
+      - "3000"
+    depends_on:
+      - api
+    networks:
+      - digitaly_internal
+      - digitaly_egress
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:3000/').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
+
+  api:
+    build:
+      context: .
+      dockerfile: Backend/Dockerfile
+    image: digitaly-api:prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: *api-database-url
+      WEB_ORIGIN: https://${DOMAIN}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      OTP_PEPPER: ${OTP_PEPPER:?OTP_PEPPER is required}
+      OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-600}
+      OTP_MAX_ATTEMPTS: ${OTP_MAX_ATTEMPTS:-5}
+      ALLOW_DOCTOR_SELF_REGISTRATION: "false"
+      SWAGGER_ENABLED: "false"
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USER: ${MAIL_USER:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM}
+      AI_SERVICE_URL: http://ai:8000
+      AI_BASE_URL: http://ai:8000
+      AI_WS_URL: ws://ai:8000
+      AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:?AI_INTERNAL_TOKEN is required}
+      UPLOAD_DIR: /app/uploads
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-10485760}
+      STORAGE_DRIVER: local
+      STUN_URLS: ${STUN_URLS:-stun:stun.l.google.com:19302}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_USERNAME: ${TURN_USERNAME:-}
+      TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
+      RUN_MIGRATIONS: "true"
+    expose:
+      - "3001"
+    volumes:
+      - digitaly_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - digitaly_internal
+      - digitaly_egress
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:3001/api/ready').then((res) => process.exit(res.status === 200 || res.status === 503 ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging: *default-logging
+
+  ai:
+    build:
+      context: ./BackendPython
+      dockerfile: Dockerfile
+    image: digitaly-ai:prod
+    restart: unless-stopped
+    environment:
+      AI_PROVIDER: ${AI_PROVIDER:-fake}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      AI_INTERNAL_TOKEN: ${AI_INTERNAL_TOKEN:?AI_INTERNAL_TOKEN is required}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-900}
+      MAX_BUFFER_BYTES: ${MAX_BUFFER_BYTES:-1920000}
+      PARTIAL_INTERVAL_SECONDS: ${PARTIAL_INTERVAL_SECONDS:-2.5}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      HF_HOME: /models/huggingface
+      XDG_CACHE_HOME: /models/cache
+    expose:
+      - "8000"
+    volumes:
+      - digitaly_ai_models:/models
+    networks:
+      - digitaly_internal
+      - digitaly_egress
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    # Tune to the VPS RAM. Defaults assume ~2 GB free for Postgres; do not raise
+    # shared_buffers above ~25% of container memory.
+    command:
+      - postgres
+      - -c
+      - max_connections=100
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - wal_compression=on
+    volumes:
+      - digitaly_pgdata:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - digitaly_internal
+    logging: *default-logging
+
+  seed:
+    profiles:
+      - seed
+    build:
+      context: .
+      dockerfile: Backend/Dockerfile
+      target: build
+    image: digitaly-api-build:prod
+    restart: "no"
+    working_dir: /app/Backend
+    command:
+      - npx
+      - prisma
+      - db
+      - seed
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: *api-database-url
+      OTP_PEPPER: ${OTP_PEPPER:?OTP_PEPPER is required}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - digitaly_internal
+    logging: *default-logging
+
+  backup:
+    profiles:
+      - backup
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      PGDATABASE: ${POSTGRES_DB:?POSTGRES_DB is required}
+    volumes:
+      - ./deploy/backups:/backups
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - >-
+        pg_dump --format=custom --no-owner --no-acl
+        --file=/backups/digitaly-$$(date +%Y%m%d-%H%M%S).dump
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - digitaly_internal
+    logging: *default-logging
+
+networks:
+  digitaly_internal:
+    internal: true
+  digitaly_egress:
+
+volumes:
+  digitaly_pgdata:
+    name: digitaly_pgdata
+  digitaly_uploads:
+    name: digitaly_uploads
+  digitaly_ai_models:
+    name: digitaly_ai_models
+  digitaly_caddy_data:
+    name: digitaly_caddy_data
+  digitaly_caddy_config:
+    name: digitaly_caddy_config

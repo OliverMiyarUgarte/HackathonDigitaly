@@ -3,7 +3,17 @@
 **/coverage
 **/.git
 **/.env
+**/.env.production
 **/*.log
+**/.next
+**/test-results
+**/playwright-report
+**/*.tsbuildinfo
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
 Backend/uploads
 Backend/src/generated
+deploy/backups
 *.pptx
