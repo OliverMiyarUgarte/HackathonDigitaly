@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Digitaly web (Next.js)
 
-## Getting Started
+Patient and doctor UI for the Digitaly teleconsultation platform: booking and confirmation,
+calendars, the patient overview, the teleconsultation room (WebRTC + copilot panel) and the
+medical-record closing form.
 
-First, run the development server:
+Built with Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4 and Socket.IO.
+The UI follows the Digitaly design system vendored in [`../docs/design-system.md`](../docs/design-system.md);
+tokens live in `app/globals.css` and the component library in `components/ui/`.
+
+See the [root README](../README.md) for the platform, and
+[`../docs/demo-script.md`](../docs/demo-script.md) for the end-to-end demo path.
+
+## Prerequisites
+
+- Node.js 22+ and npm
+- The API running at `http://localhost:3001` (see [`../Backend/README.md`](../Backend/README.md))
+- Optional: the AI copilot at `http://localhost:8000`; without it the room shows
+  `Copiloto indisponível` and the call still works
+
+## Environment
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Variable | Example | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:3001/api` | API base URL |
+| `NEXT_PUBLIC_SOCKET_URL` | `http://localhost:3001` | Socket.IO origin (namespace `/realtime`) |
+| `NEXT_PUBLIC_MAILHOG_URL` | `http://localhost:8025` | Optional; shows the MailHog link on the confirmation screen |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`next.config.ts` falls back to the same local defaults when the variables are unset. The
+production values are injected as build args in `docker-compose.prod.yml`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Run
 
-## Learn More
+```bash
+npm install
+npm run dev        # http://localhost:3000
+```
 
-To learn more about Next.js, take a look at the following resources:
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Development server |
+| `npm run build` / `npm run start` | Production build / run (standalone output) |
+| `npm run lint` / `npm run typecheck` | ESLint / `tsc --noEmit` |
+| `npm run test:e2e` | Playwright suite (25 tests in 5 files) |
+| `npm run screenshots` | Regenerate `../docs/screenshots/` |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Routes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Route | Persona | Screen |
+| --- | --- | --- |
+| `/entrar`, `/registro`, `/recuperar-senha` | public | Auth (legacy `/auth/*` and `/dashboard` redirect here) |
+| `/paciente` | patient | Home: next appointment, quick actions, recent consults |
+| `/paciente/agendar` | patient | Four-step booking wizard |
+| `/paciente/confirmar-agendamento` | patient | 6-digit e-mail code confirmation |
+| `/paciente/calendario`, `/paciente/historico`, `/paciente/prontuario` | patient | Calendar, history, records |
+| `/paciente/consultas/[consultationId]` | patient | Teleconsultation room / post-call summary |
+| `/medico`, `/medico/atendimentos` | doctor | Home and filterable agenda |
+| `/medico/pacientes/[patientId]` | doctor | Patient overview, pre-consult, history |
+| `/medico/consultas/[consultationId]` | doctor | Room with the copilot panel |
+| `/medico/consultas/[consultationId]/fechamento` | doctor | Medical-record closing form |
+| `/medico/prontuario` | doctor | Records history |
 
-## Deploy on Vercel
+Route shells enforce the role client-side (`RequireRole`); the API enforces authorization on
+every request and socket handshake.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Realtime and audio
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The client connects to the Socket.IO namespace `/realtime` with the access token and joins
+  an appointment room; notifications (`consultation.started` / `consultation.ended`) also
+  arrive through the user's room.
+- WebRTC offer/answer/ICE is relayed through the API; media flows peer to peer.
+- Only the doctor streams audio to the copilot: microphone audio is encoded as
+  `pcm_s16le`, 16 kHz, mono by `lib/realtime/pcm.ts` and `public/worklets/`, then sent as
+  `audio.chunk` frames.
+
+## Tests
+
+```bash
+npm install
+npx playwright install chromium
+npm run test:e2e
+```
+
+Playwright requires the seeded database, the API on `:3001` and the web app on `:3000`; its
+`webServer` config starts `npm run dev` automatically. `e2e/global-setup.ts` logs in the four
+seeded accounts and stores their sessions. The suite runs with one worker because it mutates
+the shared seed and the media room.
+
+## Deploy
+
+The production image is a multi-stage standalone Next build run as a non-root user. In the
+single-VPS stack it is built by `docker-compose.prod.yml` and reached only through Caddy; see
+[`../docs/deploy-vps.md`](../docs/deploy-vps.md).

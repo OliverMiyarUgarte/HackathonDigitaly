@@ -10,8 +10,9 @@ exists, what the AI generated, and what you personally reviewed or changed. See 
 [AI generation](#what-the-ai-generated-vs-what-humans-decided) section for the honest
 version of that story.
 
-Baseline: NestJS 11, Prisma 7.10 (`@prisma/adapter-pg`), PostgreSQL 16. Verified tests:
-**22 unit suites / 151 tests**, **13 e2e suites / 78 tests**.
+Baseline: NestJS 11, Prisma 7.10 (`@prisma/adapter-pg`), PostgreSQL 16, Next.js 16 App Router
+and FastAPI. Verified tests: API **24 unit suites / 169 tests**, API **13 e2e suites / 78
+tests**, web **25 Playwright tests**, AI **39 pytest tests**.
 
 ---
 
@@ -299,6 +300,77 @@ and a scoped patient lookup for doctors.
 
 **Commits**
 - `dd3fa51` fix(contracts): implement users endpoints and align health, config and docs
+
+---
+
+## Integration — turning the API, web and AI into one platform
+
+**Why:** the first milestone proved the API and its contracts. The second milestone made the
+whole path real in the browser and rewrote the Python service to the same contract, so the
+demo runs end to end instead of being described by intent. The database was cleaned up and a
+single-VPS production stack was added at the same time.
+
+**User-visible impact:** a patient can now log in at `/entrar`, book and confirm a
+consultation in the web app, see it on the calendar, and join the video room; the doctor can
+filter the agenda, read the pre-consult, start the consult with one click, see the patient
+notified in real time, stream microphone PCM to the copilot, end the call and write the
+record — all against the same seed. In production, one Compose command brings up web, API,
+AI, database and Caddy with automatic TLS and migrations.
+
+**What was integrated**
+
+- **Web rebuilt on the Digitaly design system** (`f08fb59`, `4d9ebe1`): Next.js 16 App
+  Router routes under `front-end/app/` — `/entrar`, `/registro`, `/recuperar-senha`,
+  `/paciente`, `/paciente/agendar`, `/paciente/confirmar-agendamento`,
+  `/paciente/calendario`, `/paciente/historico`, `/paciente/prontuario`,
+  `/paciente/consultas/[id]`, `/medico`, `/medico/atendimentos`,
+  `/medico/pacientes/[id]`, `/medico/consultas/[id]`, `/medico/consultas/[id]/fechamento`,
+  `/medico/prontuario`. Tokens from `docs/design-system.md` live in
+  `front-end/app/globals.css`; the component library is under `front-end/components/ui`.
+  Legacy `/auth/*` and `/dashboard` paths redirect to the new routes.
+- **Patient journey** (`e8c0bf6`): four-step booking wizard (doctor, slot, pre-consult,
+  summary), automatic code request, MailHog deep link, code verification with countdown and
+  attempt feedback, calendar with cancel/confirm actions.
+- **Doctor journey** (`05aa82d`): filterable agenda, patient overview aggregating profile,
+  upcoming appointment, pre-consult and history, start/end actions with confirmation dialogs,
+  and the closing form.
+- **Realtime room** (`abb53ee`): WebRTC offer/answer/ICE over the authenticated socket,
+  in-memory presence, mic/camera/fullscreen/attachment controls, the copilot panel, and the
+  browser PCM encoder (`pcm_s16le`, 16 kHz, mono) with a worklet.
+- **Python rewritten to the contract** (`5e7ba0d`, `bb112f3`): FastAPI service with
+  `/health`, `POST /sessions` and the `/sessions/{id}/audio` WebSocket; `FakeTranscriber` +
+  `RuleCopilot` for offline demos, optional Whisper local STT and OpenAI LLM; Pydantic
+  models mirror `service-contracts`. The old `Transcrever.py`/`mock_backend.py` prototype was
+  removed.
+- **Database cleanup** (`025ddfa`): indexes aligned with the calendar/agenda queries, the
+  broken prototype SQL dumps moved to `docs/legacy/` and a generated
+  `docs/schema.reference.sql` kept as the read-only snapshot.
+- **Deploy stack** (`9a4f895`, `8324903`): `docker-compose.prod.yml` with `web`, `api`,
+  `ai`, `db` and Caddy `proxy`, an API entrypoint that waits for Postgres and runs
+  `prisma migrate deploy`, the one-shot `seed` and `backup` profiles, per-service env
+  injection, container hardening (non-root, read-only rootfs, `cap_drop: ALL`) and a Caddy
+  CSP/HSTS configuration.
+- **Reviews and fixes** (`04c649d`, `68b7844`, `37756d9`, `bb112f3`): trusted proxy
+  handling, OTP attempt accounting, broader audit coverage and socket rate limits; resilient
+  session refresh and audio resume in the web app; Nielsen heuristics, accessibility
+  (single `h1`, focus-trapped dialogs, `aria-live` notifications, no overflow at 375px) and
+  design conformance verified by the Playwright polish suite; audio frame types aligned with
+  the contract.
+
+**Commits**
+- `f08fb59` feat(web): rebuild the frontend on the Digitaly design system
+- `4d9ebe1` docs: vendor the Digitaly design system for the frontend overhaul
+- `e8c0bf6` feat(web): implement the patient booking and consultation journey
+- `05aa82d` feat(web): implement the doctor agenda and consultation closing journey
+- `abb53ee` feat(web): add realtime consultation room with WebRTC and copilot streams
+- `37756d9` polish(web): apply Nielsen heuristics, accessibility and design conformance
+- `68b7844` fix(web): make session refresh resilient and harden audio resume
+- `5e7ba0d` fix(ai): rewrite the copilot as a contract-compliant FastAPI service
+- `bb112f3` fix(ai): align audio frame types and document local whisper setup
+- `025ddfa` fix(db): align indexes with query patterns and retire broken legacy dumps
+- `9a4f895` feat(deploy): add a single-VPS production stack with Caddy and migrations
+- `04c649d` fix(api): harden proxy trust, OTP attempts, audit coverage and realtime limits
+- `8324903` fix(deploy): tighten CSP, harden containers and correct the runbook
 
 ---
 

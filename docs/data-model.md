@@ -185,7 +185,8 @@ Retention and erasure:
 ## Seed / demo state
 
 `Backend/prisma/seed.ts` is idempotent (fixed UUIDs, upserts) and fictional.
-Password for every demo account: `Demo@1234`.
+Local-development password for every demo account: `Demo@1234`; set
+`SEED_DEMO_PASSWORD` to override it (required by the production seed profile).
 
 - Doctors: `medico@digitaly.health` (Cardiologia, CRM-SP 123456),
   `medico2@digitaly.health` (Dermatologia, CRM-RJ 654321).

@@ -48,9 +48,11 @@ npm run db:seed      # loads the fictional demo users and appointments
 | `npm run db:reset` | Drop, re-apply migrations and re-seed the demo state |
 | `npm run db:studio` | Prisma Studio |
 
-The seed creates fictional accounts only; the shared password is `Demo@1234`
-(`medico@`, `medico2@`, `paciente@`, `paciente2@digitaly.health`). Validation codes are
-delivered to MailHog at `http://localhost:8025`.
+The seed creates fictional accounts only; the shared local-development password is
+`Demo@1234` (`medico@`, `medico2@`, `paciente@`, `paciente2@digitaly.health`). Production
+seeding requires `SEED_DEMO_PASSWORD` and must not expose these accounts publicly (see
+[`../docs/deploy-vps.md`](../docs/deploy-vps.md)). Validation codes are delivered to MailHog
+at `http://localhost:8025`.
 
 ## Run
 
@@ -61,8 +63,9 @@ npm run build         # nest build (prebuild runs prisma generate)
 npm run start:prod    # node dist/main
 ```
 
-Once running: Swagger at `http://localhost:3001/docs`, liveness at
-`http://localhost:3001/api/health`, readiness at `http://localhost:3001/api/ready`.
+Once running: Swagger at `http://localhost:3001/docs` (only when `SWAGGER_ENABLED=true`;
+`Backend/.env.example` sets it for local development, the code default is `false`), liveness
+at `http://localhost:3001/api/health`, readiness at `http://localhost:3001/api/ready`.
 Do not run `start:dev` while the containerized `api` service is up — both bind port 3001.
 
 ## Test and quality
@@ -70,7 +73,7 @@ Do not run `start:dev` while the containerized `api` service is up — both bind
 ```bash
 npm run lint        # ESLint with --fix
 npm run typecheck   # tsc --noEmit (runs prisma generate first)
-npm test            # 22 unit suites / 151 tests, no database required
+npm test            # 24 unit suites / 169 tests, no database required
 npm run test:e2e    # 13 e2e suites / 78 tests, serial, needs PostgreSQL
 ```
 
@@ -79,9 +82,10 @@ suites share the demo database. Start Postgres and apply migrations before runni
 
 ## Docker
 
-The compose stack runs Postgres, MailHog, Adminer and the API. Migrations and seeds still
-run from the host because the runtime image ships production dependencies only (no Prisma
-CLI).
+The compose stack runs Postgres, MailHog, Adminer and the API. The API container waits for
+Postgres and runs `prisma migrate deploy` on startup (`deploy/entrypoint-api.sh`). Seeds run
+from the host or through the production `seed` profile, because the runtime image omits
+`tsx`, which `prisma db seed` uses.
 
 ```bash
 docker compose -f docker-compose.yml up -d --build

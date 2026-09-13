@@ -37,9 +37,10 @@ The Compose file uses `env_file: .env` for secrets and only overrides non-secret
 (`DATABASE_URL`, mail and AI hosts, `UPLOAD_DIR`). Container names stay `digitaly-tmp-*`
 and uploads live in the named volume `digitaly_tmp_uploads`.
 
-Migrations and seeds run from the host because the runtime image intentionally ships
-production dependencies only (no Prisma CLI). The build stage keeps the CLI; the runtime
-stage copies only the generated client and `dist`.
+The containerized API runs `prisma migrate deploy` on startup (the Dockerfile entrypoint
+waits for Postgres first). Seeds run from the host or through the production `seed` profile,
+because `npm ci --omit=dev` in the runtime stage leaves out `tsx`, which `prisma db seed`
+uses.
 
 ## 2. Environment variables
 
@@ -55,7 +56,7 @@ Documented in `Backend/.env.example`. Compose overrides the last column.
 | `JWT_EXPIRES_IN` | no | `15m` | Access token TTL |
 | `JWT_REFRESH_EXPIRES_IN` | no | `7d` | Refresh token TTL |
 | `ALLOW_DOCTOR_SELF_REGISTRATION` | no | `false` | Allows POST `/auth/register` with `role=doctor`; disabled in prod (doctors are seeded for the demo) |
-| `SWAGGER_ENABLED` | no | `true` | Mount `/docs`; set `false` in production |
+| `SWAGGER_ENABLED` | no | `false` | Mount `/docs`; `.env.example` sets `true` locally, production compose sets `false` |
 | `MAIL_HOST` / `MAIL_PORT` | no | `mailhog` / `1025` | SMTP for validation codes |
 | `MAIL_USER` / `MAIL_PASSWORD` | no | empty | SMTP credentials |
 | `MAIL_FROM` | no | `no-reply@digitaly.health` | Sender address |
@@ -73,8 +74,8 @@ Documented in `Backend/.env.example`. Compose overrides the last column.
 
 Refresh tokens are opaque 256-bit random values (`randomBytes(32)`); the API stores only
 their SHA-256 hash and revokes them by value, so there is no refresh-token signing secret.
-Swagger is mounted by default for the demo; set `SWAGGER_ENABLED=false` in production so
-the API schema and `/docs` are not exposed.
+`Backend/.env.example` sets `SWAGGER_ENABLED=true` for local development; the code default is
+`false`, and the production compose and Caddy edge keep `/docs` unavailable.
 
 Secrets must come from the environment or a secret manager, never from the image or git.
 
