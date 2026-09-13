@@ -69,6 +69,12 @@ export interface ServerToClientEvents {
         consultationId: string;
         endedAt: string;
     }) => void;
+    'consultation.summary': (payload: {
+        consultationId: string;
+        doctorSummary: string;
+        patientSummary: string;
+        generatedAt: string;
+    }) => void;
     'participant.joined': (payload: {
         appointmentId: string;
         userId: string;

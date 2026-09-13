@@ -43,6 +43,11 @@ export type AiServerFrame = {
     at: string;
     tags: string[];
 } | {
+    type: 'summary.ready';
+    doctorSummary: string;
+    patientSummary: string;
+    at: string;
+} | {
     type: 'error';
     code: string;
     message: string;

@@ -664,6 +664,32 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/consultations/{id}/summary:
+    get:
+      tags: [consultations]
+      operationId: getConsultationSummary
+      summary: Get the AI-generated whole-call summary
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConsultationId'
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationSummaryDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Consultation not found or summary not generated yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponseDto'
   /api/consultations/{id}/end:
     post:
       tags: [consultations]
@@ -1409,6 +1435,19 @@ components:
           $ref: '#/components/schemas/CounterpartDto'
         diagnosis:
           type: [string, 'null']
+    ConsultationSummaryDto:
+      type: object
+      required: [consultationId, doctorSummary, patientSummary, generatedAt]
+      properties:
+        consultationId:
+          type: string
+        doctorSummary:
+          type: string
+        patientSummary:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
     CreateMedicalRecordRequestDto:
       type: object
       required: [consultationId, patientId, notes]

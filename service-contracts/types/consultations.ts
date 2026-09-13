@@ -47,3 +47,10 @@ export interface ConsultationHistoryItemDto {
   doctor: CounterpartDto;
   diagnosis: string | null;
 }
+
+export interface ConsultationSummaryDto {
+  consultationId: string;
+  doctorSummary: string;
+  patientSummary: string;
+  generatedAt: string;
+}

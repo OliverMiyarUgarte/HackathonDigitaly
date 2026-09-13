@@ -8,6 +8,8 @@ All notable contract changes are documented here. The format follows
 
 ### Added
 
+- Whole-call summary: `ConsultationSummaryDto`, the `summary.ready` AI frame and the
+  `consultation.summary` WebSocket event; `GET /api/consultations/{id}/summary`.
 - Optional `from`/`to` date-time filters on `GET /api/appointments/calendar`.
 - Optional `date` date-time filter on `GET /api/appointments/doctor`.
 - Optional `from`/`to` date-time filters on `GET /api/consultations/mine`.

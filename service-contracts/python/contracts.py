@@ -383,6 +383,13 @@ class AiCopilotFeedbackFrame(StrictModel):
     tags: List[str]
 
 
+class AiSummaryReadyFrame(StrictModel):
+    type: Literal["summary.ready"]
+    doctorSummary: str
+    patientSummary: str
+    at: str
+
+
 class AiErrorFrame(StrictModel):
     type: Literal["error"]
     code: str
@@ -395,6 +402,7 @@ AiServerFrame = Annotated[
         AiTranscriptPartialFrame,
         AiTranscriptFinalFrame,
         AiCopilotFeedbackFrame,
+        AiSummaryReadyFrame,
         AiErrorFrame,
     ],
     Field(discriminator="type"),
