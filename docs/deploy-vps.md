@@ -126,6 +126,23 @@ to seed), and `AI_PROVIDER`. Keep `AI_PROVIDER=fake` for the demo: `openai` send
 consultation audio/transcripts to a third party and requires a documented legal basis
 plus a signed DPA (LGPD).
 
+`DEMO_BASIC_AUTH_USER` / `DEMO_BASIC_AUTH_HASH` are required: the shipped Caddyfile
+protects the web UI and the MailHog inbox with HTTP basic auth. The bcrypt hash
+contains `$`, which Compose interpolates, so escape every `$` as `$$` in
+`.env.production` (e.g. `$$2a$$14$$...`). Basic auth is deliberately not applied
+to `/api` or `/socket.io`, so the app's Bearer JWT still reaches the API. Generate
+the hash with:
+
+```bash
+docker run --rm caddy:2-alpine caddy hash-password --plaintext 'YOUR_PASSWORD'
+```
+
+`MAIL_*` defaults to the bundled MailHog service (`MAIL_HOST=mailhog`,
+`MAIL_PORT=1025`); the demo inbox is at `mail.$DOMAIN` behind the same basic auth.
+Switch `MAIL_*` to a real provider (Brevo/Resend/SendGrid) for production delivery.
+With no domain yet, use an `sslip.io` name such as `203-0-113-10.sslip.io` (your IP
+with dashes) for `DOMAIN`; Caddy still obtains a Let's Encrypt certificate.
+
 Validate the rendered Compose model. This is read-only: it parses, interpolates and
 checks the configuration without creating containers, networks or volumes. Always
 pass `-q`: plain `config` prints every interpolated value, **including secrets**, to
@@ -153,15 +170,13 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs -f api
 `api` logs should show the migrations being applied and `Nest application successfully
 started`. `proxy` logs should show certificates obtained for `DOMAIN` and `www.DOMAIN`.
 
-> **Do not seed demo data on a public host without access control.** The seed
+> **The seeded demo is protected by HTTP basic auth, not exposed.** The seed
 > creates fictional but well-known accounts (`medico@digitaly.health`,
-> `paciente@digitaly.health`, …) whose password comes from
-> `SEED_DEMO_PASSWORD`. Anyone who can reach the site and knows the account
-> address can log in. Before running the seed profile on an Internet-facing VPS,
-> enable one of the optional access-control blocks in `deploy/Caddyfile` - HTTP
-> `basic_auth` (set `DEMO_BASIC_AUTH_USER` / `DEMO_BASIC_AUTH_HASH`) or the
-> `remote_ip` allowlist - and set a strong `SEED_DEMO_PASSWORD`. On a private host
-> either skip seeding or delete the demo rows before onboarding real users.
+> `paciente@digitaly.health`, …) whose password comes from `SEED_DEMO_PASSWORD`.
+> The shipped Caddyfile requires `DEMO_BASIC_AUTH_USER` / `DEMO_BASIC_AUTH_HASH`
+> and applies it to the web UI and MailHog; `/api` keeps JWT auth so the app
+> works. Set a strong `SEED_DEMO_PASSWORD` anyway. On a private host either skip
+> seeding or delete the demo rows before onboarding real users.
 
 Seed the demo data once. The `seed` service is behind the `seed` profile and is a
 one-shot: it never runs on every boot. It waits for the `api` service to become
@@ -181,20 +196,21 @@ fallback password `Demo@1234` is only for an isolated dev machine.
 Verify TLS, routing and health from the VPS:
 
 ```bash
-curl -sI https://digitaly.tech | head -20          # HSTS + security headers
-curl -s  https://digitaly.tech/api/health           # liveness -> 200 {"status":"ok"}
-curl -s  https://digitaly.tech/api/ready             # readiness -> 200 (degraded still 200)
-curl -s  https://digitaly.tech/health               # ai is internal: use the API check
-curl -sI https://digitaly.tech/docs | head -1        # 404 (blocked)
+curl -sI https://$DOMAIN | head -20                  # HSTS + security headers; 401 without basic auth
+curl -s  -u $DEMO_BASIC_AUTH_USER:PASSWORD https://$DOMAIN/api/health   # API is not behind basic auth
+curl -s  https://$DOMAIN/api/ready                    # readiness -> 200 (degraded still 200)
+curl -sI https://$DOMAIN/docs | head -1               # 404 (blocked)
+curl -sI https://mail.$DOMAIN | head -1               # 401 without basic auth
 ```
 
 Demo smoke test in a browser:
 
-1. Open `https://digitaly.tech`, log in as `paciente@digitaly.health` with the
-   `SEED_DEMO_PASSWORD` you configured.
-2. Book/confirm an appointment (validation code is sent through the configured SMTP).
-3. Log in as `medico@digitaly.health` with the same password and open the room.
-4. Confirm audio/video connects (WebRTC) and the copilot transcript panel updates.
+1. Open `https://$DOMAIN`; the browser prompts for `DEMO_BASIC_AUTH_*`.
+2. Log in as `paciente@digitaly.health` with `SEED_DEMO_PASSWORD`.
+3. Book/confirm an appointment; the validation code appears in the MailHog inbox
+   at `https://mail.$DOMAIN` (same basic auth).
+4. Log in as `medico@digitaly.health` and open the room; confirm WebRTC connects
+   and the copilot transcript panel updates.
 
 ## 3. Updates
 
@@ -353,7 +369,8 @@ The single-VPS stack is the demo posture. Before real patients:
   signed URLs and per-resource authorization. `STORAGE_DRIVER=local` is the only
   implemented driver today; add the S3 driver before pointing at a bucket.
 - **Real SMTP provider.** Use SES/Postmark/Resend with SPF, DKIM and DMARC, and keep
-  validation codes out of logs. MailHog is for local development only.
+  validation codes out of logs. MailHog ships in the demo stack behind basic auth;
+  do not run it for real patients.
 - **Secrets manager.** Inject secrets from Vault/AWS Secrets Manager at deploy time
   instead of a host file; restrict file permissions (`chmod 600 .env.production`) and
   rotate `JWT_SECRET`, `OTP_PEPPER`, `AI_INTERNAL_TOKEN`, DB and SMTP credentials
@@ -397,12 +414,12 @@ The single-VPS stack is the demo posture. Before real patients:
 | API replicas | One | Two or more + Redis Socket.IO adapter |
 | TLS | Caddy automatic HTTPS | Same, plus CDN/WAF in front |
 | Secrets | `.env.production` on the VPS | Secrets manager, injected at deploy |
-| Email | Real SMTP or MailHog locally | SES/Postmark with SPF/DKIM/DMARC |
+| Email | MailHog in-stack behind basic auth | SES/Postmark with SPF/DKIM/DMARC |
 | AI | `AI_PROVIDER=fake` or OpenAI | Pinned provider + DPA, STT fallback |
 | Backups | `backup` service + cron | Automated, off-site, restore-tested |
 | Monitoring | JSON logs, health/ready probes | Metrics, traces, Sentry, alerts |
 | TURN | STUN only | coturn / managed TURN |
 
-Keep the demo credentials (`Demo@1234` local fallback, seeded doctors) out of any real
-environment: set a unique `SEED_DEMO_PASSWORD`, enable access control before seeding on
-a public host, or delete the seed data before onboarding real users.
+Keep the demo credentials out of any real environment: basic auth is already required
+by the shipped Caddyfile, but also set a unique `SEED_DEMO_PASSWORD` (do not reuse
+`Demo@1234` on a public host) or delete the seed data before onboarding real users.
