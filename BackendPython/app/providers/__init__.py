@@ -10,6 +10,7 @@ from app.providers.copilot import (
 from app.providers.factory import Providers, build_providers
 from app.providers.transcriber import (
     FakeTranscriber,
+    OpenAITranscriber,
     Transcriber,
     TranscriptionError,
     WhisperTranscriber,
@@ -21,6 +22,7 @@ __all__ = [
     "FakeTranscriber",
     "Feedback",
     "LlmCopilot",
+    "OpenAITranscriber",
     "Providers",
     "RuleCopilot",
     "Transcriber",

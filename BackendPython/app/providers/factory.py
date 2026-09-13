@@ -7,6 +7,7 @@ from app.config import Settings
 from app.providers.copilot import Copilot, LlmCopilot, RuleCopilot
 from app.providers.transcriber import (
     FakeTranscriber,
+    OpenAITranscriber,
     Transcriber,
     TranscriptionError,
     WhisperTranscriber,
@@ -45,6 +46,27 @@ def build_providers(settings: Settings) -> Providers:
 
 
 def _build_transcriber(settings: Settings) -> Transcriber:
+    if settings.ai_provider == "openai":
+        return _build_openai_transcriber(settings)
+    return _build_whisper_transcriber(settings)
+
+
+def _build_openai_transcriber(settings: Settings) -> Transcriber:
+    if not settings.openai_api_key:
+        logger.warning(
+            "AI_PROVIDER=openai but OPENAI_API_KEY is not set; "
+            "using FakeTranscriber (health reports fake+rule)."
+        )
+        return FakeTranscriber()
+    return OpenAITranscriber(
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_base_url,
+        model=settings.stt_model,
+        timeout_seconds=settings.llm_timeout_seconds,
+    )
+
+
+def _build_whisper_transcriber(settings: Settings) -> Transcriber:
     try:
         return WhisperTranscriber(
             model_name=settings.whisper_model,
@@ -52,12 +74,9 @@ def _build_transcriber(settings: Settings) -> Transcriber:
             compute_type=settings.whisper_compute_type,
         )
     except TranscriptionError:
-        if settings.ai_provider == "local":
-            logger.warning(
-                "AI_PROVIDER=local but no Whisper backend is installed; "
-                "using FakeTranscriber (health reports fake+rule). "
-                "Install faster-whisper with 'pip install -r requirements-whisper.txt'."
-            )
-        else:
-            logger.warning("Whisper unavailable; falling back to FakeTranscriber")
+        logger.warning(
+            "AI_PROVIDER=local but no Whisper backend is installed; "
+            "using FakeTranscriber (health reports fake+rule). "
+            "Install faster-whisper with 'pip install -r requirements-whisper.txt'."
+        )
         return FakeTranscriber()

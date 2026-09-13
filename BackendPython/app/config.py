@@ -13,6 +13,7 @@ _ENV_TO_FIELD: Mapping[str, str] = {
     "OPENAI_API_KEY": "openai_api_key",
     "OPENAI_BASE_URL": "openai_base_url",
     "LLM_MODEL": "llm_model",
+    "STT_MODEL": "stt_model",
     "WHISPER_MODEL": "whisper_model",
     "WHISPER_DEVICE": "whisper_device",
     "WHISPER_COMPUTE_TYPE": "whisper_compute_type",
@@ -32,6 +33,7 @@ class Settings(BaseModel):
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
+    stt_model: str = "whisper-1"
     llm_timeout_seconds: float = Field(default=30.0, gt=0)
     whisper_model: str = "base"
     whisper_device: str = "cpu"

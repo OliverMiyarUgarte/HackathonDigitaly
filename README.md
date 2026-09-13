@@ -415,9 +415,10 @@ both sides (the readiness probe only calls the public `/health`).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `AI_PROVIDER` | `fake` | `fake`, `local` (Whisper) or `openai` |
+| `AI_PROVIDER` | `fake` | `fake`, `local` (Whisper) or `openai` (OpenAI STT + LLM) |
 | `AI_INTERNAL_TOKEN` | empty | Shared secret with the API; empty rejects everything |
-| `OPENAI_API_KEY` / `LLM_MODEL` / `OPENAI_BASE_URL` | - | `LlmCopilot` when `AI_PROVIDER=openai` |
+| `OPENAI_API_KEY` | empty | Real STT + copilot when `AI_PROVIDER=openai` |
+| `OPENAI_BASE_URL` / `LLM_MODEL` / `STT_MODEL` | `https://api.openai.com/v1` / `gpt-4o-mini` / `whisper-1` | OpenAI endpoint, chat model and transcription model |
 | `WHISPER_MODEL` / `WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` | `base` / `cpu` / `int8` | Local STT |
 | `SESSION_TTL_SECONDS` / `MAX_BUFFER_BYTES` / `PARTIAL_INTERVAL_SECONDS` | `900` / `1920000` / `2.5` | Session and streaming limits |
 

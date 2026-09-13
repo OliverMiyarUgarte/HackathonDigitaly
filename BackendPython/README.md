@@ -39,6 +39,12 @@ pip install -r requirements-whisper.txt   # or: pip install ".[local]"
 `openai-whisper`). Without an installed engine the service logs a clear warning at
 startup, falls back to `FakeTranscriber`, and `/health` reports `fake+rule`.
 
+`AI_PROVIDER=openai` with `OPENAI_API_KEY` set uses the OpenAI Audio
+Transcriptions API for STT (`OpenAITranscriber`, `STT_MODEL`, default
+`whisper-1`) and OpenAI chat completions for the copilot. Without a key the
+service logs a warning and falls back to `FakeTranscriber` + `RuleCopilot`
+(`/health` reports `fake+rule`).
+
 Stream a WAV file through the contract with the dev client:
 
 ```bash
@@ -55,20 +61,22 @@ the pipeline never depends on a concrete provider.
 | --- | --- | --- | --- |
 | `fake` | `FakeTranscriber` | `RuleCopilot` | none |
 | `local` | `WhisperTranscriber` (`faster-whisper` then `openai-whisper`); `FakeTranscriber` with health `fake+rule` if no engine | `RuleCopilot` | none |
-| `openai` | `WhisperTranscriber` when a model is installed | `LlmCopilot` when `OPENAI_API_KEY` is set, else `RuleCopilot` | OpenAI chat completions |
+| `openai` | `OpenAITranscriber` when `OPENAI_API_KEY` is set, else `FakeTranscriber` | `LlmCopilot` when `OPENAI_API_KEY` is set, else `RuleCopilot` | OpenAI audio transcriptions + chat completions |
 
-`WhisperTranscriber` transcribes the in-memory `numpy` buffer directly, so no
-temporary audio files are written.
+`WhisperTranscriber` transcribes the in-memory `numpy` buffer directly, and
+`OpenAITranscriber` encodes it to an in-memory WAV, so no temporary audio files
+are written.
 
 ## Environment
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `AI_PROVIDER` | `fake` | `fake`, `local` or `openai` |
-| `OPENAI_API_KEY` | empty | Enables `LlmCopilot` |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | LLM endpoint |
+| `OPENAI_API_KEY` | empty | Enables `OpenAITranscriber` (`openai`) and `LlmCopilot` |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI endpoint (STT + chat) |
 | `LLM_MODEL` | `gpt-4o-mini` | Chat model |
-| `WHISPER_MODEL` | `base` | Whisper model name |
+| `STT_MODEL` | `whisper-1` | OpenAI transcription model (`openai`) |
+| `WHISPER_MODEL` | `base` | Local Whisper model name (`local`) |
 | `AI_INTERNAL_TOKEN` | empty | Shared secret with NestJS; empty rejects everything |
 | `SESSION_TTL_SECONDS` | `900` | Idle timeout |
 | `MAX_BUFFER_BYTES` | `1920000` | Hard per-session audio cap (~60 s of 16 kHz mono) |
@@ -119,7 +127,8 @@ ruff check .
 pytest
 ```
 
-All tests use the fake providers. No network access and no model download.
+All tests run offline: the fake providers and a stubbed `httpx` client are used.
+No network access and no model download.
 
 ## Docker
 
@@ -137,6 +146,8 @@ Runs as a non-root user and exposes the `/health` healthcheck.
 - Buffers are bounded and cleared on `audio.end`, `session.close`, idle timeout
   and shutdown. Sessions are ephemeral.
 - Tokens and transcripts are never logged. Errors report codes, not content.
-- Third-party STT/LLM providers (`local`/`openai`) are operators: enable them
-  only with a documented legal basis and a data processing agreement. The
-  `fake`/`rule` path keeps the demo entirely on-host.
+- Third-party providers (`AI_PROVIDER=openai`) are operators: `OpenAITranscriber`
+  uploads consultation audio and `LlmCopilot` sends transcripts, so enable them
+  only with a documented legal basis and a signed data processing agreement.
+  OpenAI bills usage (audio minutes for STT, tokens for the LLM), so budget for
+  it; `fake`/`local` keep the demo entirely on-host.
