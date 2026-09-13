@@ -201,9 +201,10 @@ automated retention/partition job is still to be added.
 ## 5. Secrets management
 
 - Never commit `.env`; only `Backend/.env.example` documents variable names.
-- Production reads secrets from a managed secret store (AWS Secrets Manager, GCP Secret
-  Manager, Vault), injected as environment variables at deploy time and mounted only in
-  memory.
+- Production target: read secrets from a managed secret store (AWS Secrets Manager, GCP
+  Secret Manager, Vault), injected as environment variables at deploy time and mounted
+  only in memory. The single-VPS demo stack still uses `.env.production` on the host
+  (`chmod 600`); the operator is responsible for protecting and rotating it.
 - The container image contains no secrets; build args are limited to a dummy
   `DATABASE_URL` used exclusively for `prisma generate`.
 - Rotate `JWT_SECRET`, `OTP_PEPPER` and `AI_INTERNAL_TOKEN` regularly; rotate the
@@ -224,11 +225,15 @@ Health data is sensitive personal data under LGPD (Art. 11). Apply the following
 - **Retention windows.** Define per-data-class windows, for example: consultation audio
   (if hosted) 30 days; transcripts 30-90 days; medical records per the applicable
   professional/legal retention period; refresh tokens and validation codes expire
-  automatically. Enforce deletion with scheduled jobs and verify the delete path.
+  automatically. Enforce deletion with scheduled jobs and verify the delete path. These
+  jobs are not implemented in this stack yet; they are an operator TODO.
 - **Third parties.** STT/LLM and email providers are operators: sign a data processing
   agreement, send the minimum data, and prefer providers that do not train on the data.
-- **Security.** TLS/WSS in transit, encryption at rest for the database and object
-  storage, least-privilege access, and short-lived signed URLs for attachments.
+- **Security.** TLS/WSS in transit is implemented via Caddy. Encryption at rest for the
+  database and object storage, least-privilege access and short-lived signed URLs for
+  attachments are production targets / operator TODOs: the single-VPS demo stores data
+  on an unencrypted local volume. Enable host/disk encryption and a managed service with
+  encryption at rest before handling real patient data.
 - **Data subject rights.** Support access, correction and deletion requests; use
   soft-delete plus a retention policy rather than keeping permanent copies. Record every
   access in the audit log.

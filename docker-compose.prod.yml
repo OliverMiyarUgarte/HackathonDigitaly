@@ -20,13 +20,37 @@ x-logging: &default-logging
 
 x-api-database-url: &api-database-url "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:?POSTGRES_DB is required}"
 
+# Hardening shared by the stateless services (web/api/ai/proxy): no privilege
+# escalation, drop every Linux capability, read-only root filesystem with a
+# writable /tmp. Services that write elsewhere use the named volumes declared
+# below (uploads, AI models, Caddy TLS state). `db` is intentionally excluded
+# from cap_drop/read_only because Postgres needs its default capabilities to
+# chown PGDATA and drop privileges, and writes outside its volume.
+x-service-hardening: &service-hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  read_only: true
+  tmpfs:
+    - /tmp
+
 services:
   proxy:
     image: caddy:2-alpine
     restart: unless-stopped
+    <<: *service-hardening
+    # Caddy still needs the capability to bind privileged ports 80/443; TLS
+    # state lives in the digitaly_caddy_data/config volumes.
+    cap_add:
+      - NET_BIND_SERVICE
     environment:
       DOMAIN: ${DOMAIN:?DOMAIN is required}
       ACME_EMAIL: ${ACME_EMAIL}
+      # Only used when the optional demo access-control block in
+      # deploy/Caddyfile is enabled.
+      DEMO_BASIC_AUTH_USER: ${DEMO_BASIC_AUTH_USER:-}
+      DEMO_BASIC_AUTH_HASH: ${DEMO_BASIC_AUTH_HASH:-}
     ports:
       - "80:80"
       - "443:443"
@@ -52,6 +76,12 @@ services:
         NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:?NEXT_PUBLIC_SOCKET_URL is required}
     image: digitaly-web:prod
     restart: unless-stopped
+    <<: *service-hardening
+    # Next keeps a runtime fetch/image cache under .next/cache; put it on a
+    # tmpfs so the container root filesystem can stay read-only.
+    tmpfs:
+      - /tmp
+      - /app/front-end/.next/cache
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -82,9 +112,13 @@ services:
       dockerfile: Backend/Dockerfile
     image: digitaly-api:prod
     restart: unless-stopped
+    <<: *service-hardening
     environment:
       NODE_ENV: production
       PORT: "3001"
+      # Keep tooling caches (Prisma) on the writable tmpfs while the root
+      # filesystem is read-only.
+      HOME: /tmp
       DATABASE_URL: *api-database-url
       WEB_ORIGIN: https://${DOMAIN}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
@@ -126,7 +160,7 @@ services:
       test:
         - CMD-SHELL
         - >-
-          node -e "fetch('http://127.0.0.1:3001/api/ready').then((res) => process.exit(res.status === 200 || res.status === 503 ? 0 : 1)).catch(() => process.exit(1))"
+          node -e "fetch('http://127.0.0.1:3001/api/ready').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 5
@@ -139,7 +173,11 @@ services:
       dockerfile: Dockerfile
     image: digitaly-ai:prod
     restart: unless-stopped
+    <<: *service-hardening
     environment:
+      # `fake` is the safe demo default and calls no external processor.
+      # `openai` sends consultation audio/transcripts to a third party and is
+      # only allowed with a documented legal basis and a signed DPA (LGPD).
       AI_PROVIDER: ${AI_PROVIDER:-fake}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
@@ -176,6 +214,10 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    # Postgres keeps its default capabilities and a writable root filesystem:
+    # the entrypoint needs to chown PGDATA and drop to the postgres user.
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -232,8 +274,12 @@ services:
       NODE_ENV: production
       DATABASE_URL: *api-database-url
       OTP_PEPPER: ${OTP_PEPPER:?OTP_PEPPER is required}
+      # Required by prisma/seed.ts; the local-dev fallback is Demo@1234.
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:?SEED_DEMO_PASSWORD is required for the seed profile}
     depends_on:
-      db:
+      # Wait for the API to be healthy so `prisma migrate deploy` has run and
+      # the schema exists before seeding. api itself waits for db.
+      api:
         condition: service_healthy
     networks:
       - digitaly_internal

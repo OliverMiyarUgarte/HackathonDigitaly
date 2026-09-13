@@ -121,13 +121,18 @@ openssl rand -hex 32   # POSTGRES_PASSWORD (hex avoids URL-encoding issues)
 Edit `.env.production` and set at least: `DOMAIN`, `ACME_EMAIL`, `POSTGRES_*`,
 `DATABASE_URL` (keep it consistent with `POSTGRES_*`), `JWT_SECRET`, `OTP_PEPPER`,
 `AI_INTERNAL_TOKEN`, `MAIL_*`, `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_SOCKET_URL`
-(both must use the real `https://${DOMAIN}` origin), and `AI_PROVIDER`.
+(both must use the real `https://${DOMAIN}` origin), `SEED_DEMO_PASSWORD` (if you plan
+to seed), and `AI_PROVIDER`. Keep `AI_PROVIDER=fake` for the demo: `openai` sends
+consultation audio/transcripts to a third party and requires a documented legal basis
+plus a signed DPA (LGPD).
 
 Validate the rendered Compose model. This is read-only: it parses, interpolates and
-prints the configuration without creating containers, networks or volumes.
+checks the configuration without creating containers, networks or volumes. Always
+pass `-q`: plain `config` prints every interpolated value, **including secrets**, to
+your terminal and shell history.
 
 ```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml config
+docker compose --env-file .env.production -f docker-compose.prod.yml config -q
 ```
 
 Build and start the stack. `up -d --build` builds the images, creates the internal
@@ -148,14 +153,30 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs -f api
 `api` logs should show the migrations being applied and `Nest application successfully
 started`. `proxy` logs should show certificates obtained for `DOMAIN` and `www.DOMAIN`.
 
-Seed the demo data once. The `seed` service is behind a profile and is a one-shot:
-it never runs on every boot. It needs `OTP_PEPPER` because the seed writes a demo
-validation code.
+> **Do not seed demo data on a public host without access control.** The seed
+> creates fictional but well-known accounts (`medico@digitaly.health`,
+> `paciente@digitaly.health`, …) whose password comes from
+> `SEED_DEMO_PASSWORD`. Anyone who can reach the site and knows the account
+> address can log in. Before running the seed profile on an Internet-facing VPS,
+> enable one of the optional access-control blocks in `deploy/Caddyfile` - HTTP
+> `basic_auth` (set `DEMO_BASIC_AUTH_USER` / `DEMO_BASIC_AUTH_HASH`) or the
+> `remote_ip` allowlist - and set a strong `SEED_DEMO_PASSWORD`. On a private host
+> either skip seeding or delete the demo rows before onboarding real users.
+
+Seed the demo data once. The `seed` service is behind the `seed` profile and is a
+one-shot: it never runs on every boot. It waits for the `api` service to become
+healthy, so `prisma migrate deploy` has already created the schema (important on a
+fresh stack). It needs `OTP_PEPPER` (the seed writes a demo validation code) and
+`SEED_DEMO_PASSWORD`.
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml \
   --profile seed run --rm seed
 ```
+
+`run` starts the dependencies (`db`, `api`) if they are not already running, waits
+for `api` to report healthy, runs the seed once and exits. The local development
+fallback password `Demo@1234` is only for an isolated dev machine.
 
 Verify TLS, routing and health from the VPS:
 
@@ -169,9 +190,10 @@ curl -sI https://digitaly.tech/docs | head -1        # 404 (blocked)
 
 Demo smoke test in a browser:
 
-1. Open `https://digitaly.tech`, log in as `paciente@digitaly.health` / `Demo@1234`.
+1. Open `https://digitaly.tech`, log in as `paciente@digitaly.health` with the
+   `SEED_DEMO_PASSWORD` you configured.
 2. Book/confirm an appointment (validation code is sent through the configured SMTP).
-3. Log in as `medico@digitaly.health` / `Demo@1234` and open the consultation room.
+3. Log in as `medico@digitaly.health` with the same password and open the room.
 4. Confirm audio/video connects (WebRTC) and the copilot transcript panel updates.
 
 ## 3. Updates
@@ -180,7 +202,7 @@ Back up first (see [Backups](#5-backup-and-restore)). Then:
 
 ```bash
 git pull --ff-only
-docker compose --env-file .env.production -f docker-compose.prod.yml config   # sanity check
+docker compose --env-file .env.production -f docker-compose.prod.yml config -q  # sanity check (plain `config` leaks secrets)
 docker compose --env-file .env.production -f docker-compose.prod.yml build
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
@@ -249,7 +271,12 @@ Schedule it with cron (daily at 03:15) and copy dumps off-site:
 ```
 
 Add an off-site copy (object storage, `rsync` to another host, or a managed backup
-service). A backup that only lives on the VPS is not a backup.
+service). A backup that only lives on the VPS is not a backup. The dump contains
+PHI: encrypt it before it leaves the host (for example `age` or `gpg`) and keep the
+key separate from the ciphertext. Encrypt the attachment archive the same way.
+Enable full-disk encryption on the VPS (LUKS) so the primary data and any local
+dumps are protected at rest; this is an operator responsibility, not something this
+stack configures for you.
 
 Restore the database from a dump:
 
@@ -257,9 +284,11 @@ Restore the database from a dump:
 # Stop writers first so no data changes during restore
 docker compose --env-file .env.production -f docker-compose.prod.yml stop api web
 
-# --clean --if-exists drops and recreates objects from the dump
+# Run pg_restore inside the container so POSTGRES_USER/POSTGRES_DB expand there
+# (they are not set in your host shell). --clean --if-exists drops and recreates
+# objects from the dump.
 docker compose --env-file .env.production -f docker-compose.prod.yml exec -T db \
-  pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --no-acl \
+  sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --no-acl' \
   < deploy/backups/digitaly-YYYYMMDD-HHMMSS.dump
 
 docker compose --env-file .env.production -f docker-compose.prod.yml start api web
@@ -329,9 +358,22 @@ The single-VPS stack is the demo posture. Before real patients:
   instead of a host file; restrict file permissions (`chmod 600 .env.production`) and
   rotate `JWT_SECRET`, `OTP_PEPPER`, `AI_INTERNAL_TOKEN`, DB and SMTP credentials
   independently.
+- **Reproducible images.** Pin base and runtime images by digest (for example
+  `node:22-alpine@sha256:...`, `caddy:2-alpine@sha256:...`,
+  `postgres:16-alpine@sha256:...`) so a deploy rebuilds the same bytes and a moved tag
+  cannot silently ship new code. Renovate/Dependabot can propose digest bumps as
+  reviewable PRs.
+- **Python lockfile.** `BackendPython/requirements.txt` is not hash-locked. Generate a
+  lockfile with hashes (`pip-compile --generate-hashes` or `uv lock`) and install with
+  `--require-hashes` so the AI image is deterministic and supply-chain tampering is
+  detectable.
 - **Host hardening.** Key-only SSH, no root login, `fail2ban`, automatic security
   updates, UFW as above, and a non-root deploy user. Consider `docker` root-equivalence
   when granting group membership.
+- **Disk and backup encryption.** Enable full-disk encryption (LUKS) on the VPS and
+  encrypt database/attachment backups before any off-site copy, keeping the keys
+  separate. Encryption at rest is an operator responsibility; this stack does not
+  configure it.
 - **Observability.** Keep JSON logs with the `x-correlation-id` propagated web -> api ->
   ai. Add Prometheus metrics (request rate/latency/errors, socket connections, STT
   pipeline lag), OpenTelemetry traces and Sentry for exceptions. Alert on readiness
@@ -339,9 +381,12 @@ The single-VPS stack is the demo posture. Before real patients:
 - **TURN for WebRTC.** STUN alone fails on restrictive clinic networks. Deploy coturn
   (or a managed TURN) on a public IP with short-lived credentials and set
   `TURN_URLS`/`TURN_USERNAME`/`TURN_CREDENTIAL`; open the TURN ports in the firewall.
-- **LGPD.** PHI stays encrypted in transit and at rest, access is audited, retention is
-  enforced, and STT/LLM/SMTP providers are operators under a data processing agreement.
-  See `docs/operations.md`.
+- **LGPD (operator responsibility).** TLS/WSS in transit is provided by Caddy. Encryption
+  at rest, audit-log retention and automated retention/deletion jobs are **not
+  implemented in this stack**: they remain TODOs. Use a managed Postgres/object store
+  with encryption at rest (or enable host/disk encryption) and add scheduled retention
+  jobs before storing real patient data. Treat STT/LLM/SMTP providers as operators under
+  a data processing agreement. See `docs/operations.md`.
 
 ## 8. Demo vs production
 
@@ -358,5 +403,6 @@ The single-VPS stack is the demo posture. Before real patients:
 | Monitoring | JSON logs, health/ready probes | Metrics, traces, Sentry, alerts |
 | TURN | STUN only | coturn / managed TURN |
 
-Keep the demo credentials (`Demo@1234`, seeded doctors) out of any real environment:
-override or delete the seed data before onboarding real users.
+Keep the demo credentials (`Demo@1234` local fallback, seeded doctors) out of any real
+environment: set a unique `SEED_DEMO_PASSWORD`, enable access control before seeding on
+a public host, or delete the seed data before onboarding real users.

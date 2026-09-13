@@ -12,15 +12,55 @@
 		format json
 	}
 
+	# Security headers. Content-Security-Policy notes for operators:
+	# - 'unsafe-eval' is intentionally absent. The Next 16 production build emits
+	#   no eval in browser chunks; only the React development runtime uses eval.
+	# - Next emits inline bootstrap/flight <script> tags, so script-src keeps
+	#   'unsafe-inline' to stay runnable. For a nonce-based policy, add a Next
+	#   middleware that mints a per-response nonce and forwards the request CSP;
+	#   Caddy alone cannot generate a nonce. Do not remove 'unsafe-inline' until
+	#   that middleware is in place or hydration will break.
+	# - connect-src is same-origin: /api and /socket.io are proxied by this
+	#   Caddy instance. Add origins here if NEXT_PUBLIC_API_URL /
+	#   NEXT_PUBLIC_SOCKET_URL ever point somewhere else.
+	# - img-src is limited to the unoptimized brand logos served from
+	#   digitaly.tech; replace it if DOMAIN differs.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		X-Frame-Options "DENY"
 		Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
-		Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data: blob: https:; media-src 'self' blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https: wss:"
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data: https://digitaly.tech; media-src 'self' blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://{$DOMAIN} wss://{$DOMAIN}"
 		-Server
 	}
+
+	# ---------------------------------------------------------------------------
+	# OPTIONAL demo access control.
+	# The seed profile creates fictional accounts with a shared password. Never
+	# expose that data on a public host. Before running the seed profile on an
+	# Internet-facing VPS, enable ONE of the options below and only then seed.
+	#
+	# Option A - HTTP basic auth. Generate a hash with:
+	#   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'YOUR_PASSWORD'
+	# then set DEMO_BASIC_AUTH_USER / DEMO_BASIC_AUTH_HASH in .env.production and
+	# uncomment this block:
+	#
+	# basic_auth {
+	# 	{$DEMO_BASIC_AUTH_USER} {$DEMO_BASIC_AUTH_HASH}
+	# }
+	#
+	# Option B - IP allowlist. Uncomment and replace the CIDRs with the
+	# office/VPN ranges that may reach the demo; everyone else gets 403. Use a
+	# `handle` block: Caddy orders a matcher-specific handle before the
+	# catch-all handle below, whereas a top-level `respond @demo 403` would be
+	# evaluated too late to take effect.
+	#
+	# @demo not remote_ip 203.0.113.0/24 2001:db8::/32
+	# handle @demo {
+	# 	respond 403
+	# }
+	# ---------------------------------------------------------------------------
 
 	# Block API schema/docs even when SWAGGER_ENABLED is accidentally left on.
 	@blocked path /docs* /api/docs*
@@ -28,8 +68,10 @@
 		respond 404
 	}
 
-	# Socket.IO handshake/upgrade plus the /realtime namespace alias.
-	@socket path /socket.io/* /realtime/*
+	# Socket.IO's handshake and upgrades all travel over /socket.io/. Namespaces
+	# are logical and do not add URL paths, so the former /realtime/* alias was
+	# inert and has been removed.
+	@socket path /socket.io/*
 	handle @socket {
 		reverse_proxy api:3001 {
 			transport http {
