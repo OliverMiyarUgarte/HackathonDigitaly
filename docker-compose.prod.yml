@@ -85,6 +85,8 @@ services:
       - --no-dtls
       - --min-port=49160
       - --max-port=49200
+      - --listening-ip=${TURN_LOCAL_IP:?TURN_LOCAL_IP is required}
+      - --relay-ip=${TURN_LOCAL_IP:?TURN_LOCAL_IP is required}
       - --external-ip=${PUBLIC_IP:?PUBLIC_IP is required}
     logging: *default-logging
 
