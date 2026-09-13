@@ -65,7 +65,7 @@
 	# Docs paths are excluded so they still return the 404 below. Static build
 	# assets are excluded too: some browsers do not replay basic-auth credentials
 	# on subresource requests, which leaves the app half-hydrated.
-	@ui not path /api/* /socket.io/* /docs* /api/docs* /_next/* /favicon.ico
+	@ui not path /api/* /socket.io/* /docs* /api/docs* /_next/* /worklets/* /favicon.ico
 	basic_auth @ui {
 		{$DEMO_BASIC_AUTH_USER} {$DEMO_BASIC_AUTH_HASH}
 	}

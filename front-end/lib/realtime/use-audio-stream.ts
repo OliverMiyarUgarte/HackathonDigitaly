@@ -135,6 +135,7 @@ export function useAudioStream({
         setError("Captura de áudio em tempo real indisponível neste navegador.");
         return;
       }
+      await context.resume();
       await context.audioWorklet.addModule(WORKLET_URL);
 
       const source = context.createMediaStreamSource(mediaStream);
@@ -178,7 +179,11 @@ export function useAudioStream({
       workletRef.current = worklet;
       streamingRef.current = true;
       setIsStreaming(true);
-    } catch {
+    } catch (caught) {
+      console.error(
+        "pcm-capture-failed",
+        caught instanceof Error ? `${caught.name}: ${caught.message}` : "unknown",
+      );
       teardown();
       streamingRef.current = false;
       if (activeRef.current) {
