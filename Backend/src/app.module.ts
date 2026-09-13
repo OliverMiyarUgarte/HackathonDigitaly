@@ -55,7 +55,7 @@ import { UsersModule } from './users/users.module';
         UPLOAD_MAX_BYTES: Joi.number().integer().positive().default(10_485_760),
         STORAGE_DRIVER: Joi.string().valid('local').default('local'),
         STUN_URLS: Joi.string().default('stun:stun.l.google.com:19302'),
-        TURN_URLS: Joi.string().optional(),
+        TURN_URLS: Joi.string().allow('').optional(),
         TURN_USERNAME: Joi.string().allow('').optional(),
         TURN_CREDENTIAL: Joi.string().allow('').optional(),
       }),
