@@ -47,10 +47,9 @@ services:
     environment:
       DOMAIN: ${DOMAIN:?DOMAIN is required}
       ACME_EMAIL: ${ACME_EMAIL}
-      # Only used when the optional demo access-control block in
-      # deploy/Caddyfile is enabled.
-      DEMO_BASIC_AUTH_USER: ${DEMO_BASIC_AUTH_USER:-}
-      DEMO_BASIC_AUTH_HASH: ${DEMO_BASIC_AUTH_HASH:-}
+      # Required: the seeded demo must never be publicly reachable without it.
+      DEMO_BASIC_AUTH_USER: ${DEMO_BASIC_AUTH_USER:?DEMO_BASIC_AUTH_USER is required}
+      DEMO_BASIC_AUTH_HASH: ${DEMO_BASIC_AUTH_HASH:?DEMO_BASIC_AUTH_HASH is required}
     ports:
       - "80:80"
       - "443:443"
@@ -209,6 +208,19 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    logging: *default-logging
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    restart: unless-stopped
+    <<: *service-hardening
+    # Internal only. `api` sends SMTP to mailhog:1025 and the `proxy` service
+    # exposes the mailbox UI on mail.{$DOMAIN} behind basic auth.
+    expose:
+      - "1025"
+      - "8025"
+    networks:
+      - digitaly_internal
     logging: *default-logging
 
   db:

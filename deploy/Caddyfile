@@ -43,12 +43,10 @@
 	#
 	# Option A - HTTP basic auth. Generate a hash with:
 	#   docker run --rm caddy:2-alpine caddy hash-password --plaintext 'YOUR_PASSWORD'
-	# then set DEMO_BASIC_AUTH_USER / DEMO_BASIC_AUTH_HASH in .env.production and
-	# uncomment this block:
-	#
-	# basic_auth {
-	# 	{$DEMO_BASIC_AUTH_USER} {$DEMO_BASIC_AUTH_HASH}
-	# }
+	# then set DEMO_BASIC_AUTH_USER / DEMO_BASIC_AUTH_HASH in .env.production.
+	# Enabled on the web UI and MailHog only (see the final `handle` block), NOT
+	# on /api or /socket.io: basic auth consumes the Authorization header and
+	# would strip the Bearer JWT the app sends. The API keeps its own JWT guard.
 	#
 	# Option B - IP allowlist. Uncomment and replace the CIDRs with the
 	# office/VPN ranges that may reach the demo; everyone else gets 403. Use a
@@ -61,6 +59,14 @@
 	# 	respond 403
 	# }
 	# ---------------------------------------------------------------------------
+
+	# Basic auth protects the UI only. /api and /socket.io are excluded so the
+	# app can send its Bearer JWT (basic auth consumes the Authorization header).
+	# Docs paths are excluded so they still return the 404 below.
+	@ui not path /api/* /socket.io/* /docs* /api/docs*
+	basic_auth @ui {
+		{$DEMO_BASIC_AUTH_USER} {$DEMO_BASIC_AUTH_HASH}
+	}
 
 	# Block API schema/docs even when SWAGGER_ENABLED is accidentally left on.
 	@blocked path /docs* /api/docs*
@@ -97,6 +103,17 @@
 			health_timeout 5s
 		}
 	}
+}
+
+# MailHog inbox for dev/demo. Served on mail.{$DOMAIN} behind the same basic
+# auth as the app so validation codes and e-mails are never publicly readable.
+# Requires a wildcard DNS record or an sslip.io-style domain.
+mail.{$DOMAIN} {
+	encode zstd gzip
+	basic_auth {
+		{$DEMO_BASIC_AUTH_USER} {$DEMO_BASIC_AUTH_HASH}
+	}
+	reverse_proxy mailhog:8025
 }
 
 # Apex redirect. Requires a DNS record for www and must be removed or edited
