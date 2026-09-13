@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ConsultationLauncher } from "@/components/consultation/consultation-launcher";
 import { useSession } from "@/lib/auth";
 import type { UserRole } from "@/lib/contracts";
 import { ROLE_LABEL } from "./nav-config";
@@ -54,6 +55,8 @@ export function RoleLanding({
           </div>
         </CardContent>
       </Card>
+
+      <ConsultationLauncher role={role} />
 
       <EmptyState
         icon={Sparkles}

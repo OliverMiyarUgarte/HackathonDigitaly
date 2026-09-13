@@ -2,6 +2,8 @@
 
 import type { ReactNode } from "react";
 import { RequireRole } from "@/lib/auth";
+import { RealtimeProvider } from "@/lib/realtime/socket-context";
+import { ConsultationNotifications } from "@/lib/realtime/use-consultation-notifications";
 import type { UserRole } from "@/lib/contracts";
 import { AppShell } from "./app-shell";
 
@@ -13,7 +15,10 @@ export interface RoleShellProps {
 export function RoleShell({ role, children }: RoleShellProps) {
   return (
     <RequireRole roles={[role]}>
-      <AppShell role={role}>{children}</AppShell>
+      <RealtimeProvider>
+        <ConsultationNotifications />
+        <AppShell role={role}>{children}</AppShell>
+      </RealtimeProvider>
     </RequireRole>
   );
 }

@@ -7,16 +7,24 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import Link from "next/link";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ToastVariant = "info" | "success" | "warning" | "error";
+
+export interface ToastAction {
+  label: string;
+  href?: string;
+  onClick?: () => void;
+}
 
 export interface ToastInput {
   title: string;
   description?: string;
   variant?: ToastVariant;
   duration?: number;
+  action?: ToastAction;
 }
 
 interface ToastItem {
@@ -24,6 +32,7 @@ interface ToastItem {
   title: string;
   description?: string;
   variant: ToastVariant;
+  action?: ToastAction;
 }
 
 interface ToastContextValue {
@@ -58,6 +67,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         title: input.title,
         description: input.description,
         variant: input.variant ?? "info",
+        action: input.action,
       };
       setToasts((current) => [...current, item]);
       window.setTimeout(() => dismiss(id), input.duration ?? 5000);
@@ -86,6 +96,28 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <p className="text-sm font-medium text-texto">{item.title}</p>
               {item.description ? (
                 <p className="text-sm text-texto-2">{item.description}</p>
+              ) : null}
+              {item.action ? (
+                item.action.href ? (
+                  <Link
+                    href={item.action.href}
+                    onClick={() => dismiss(item.id)}
+                    className="mt-1 inline-flex w-fit items-center rounded-pill text-xs font-medium text-celeste-500 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
+                  >
+                    {item.action.label}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      item.action?.onClick?.();
+                      dismiss(item.id);
+                    }}
+                    className="mt-1 inline-flex w-fit items-center rounded-pill text-xs font-medium text-celeste-500 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-celeste-500"
+                  >
+                    {item.action.label}
+                  </button>
+                )
               ) : null}
             </div>
             <button

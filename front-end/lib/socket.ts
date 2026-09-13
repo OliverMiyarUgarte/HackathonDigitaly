@@ -7,9 +7,16 @@ import { API_BASE_URL, getAccessToken } from "./api";
 
 export type RealtimeSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
+const SOCKET_ORIGIN = (process.env.NEXT_PUBLIC_SOCKET_URL ?? "").replace(/\/+$/, "");
+
 let socket: RealtimeSocket | null = null;
 
 function namespaceUrl(): string {
+  if (SOCKET_ORIGIN) {
+    return SOCKET_ORIGIN.endsWith("/realtime")
+      ? SOCKET_ORIGIN
+      : `${SOCKET_ORIGIN}/realtime`;
+  }
   const base = API_BASE_URL.replace(/\/api\/?$/, "");
   return `${base}/realtime`;
 }
