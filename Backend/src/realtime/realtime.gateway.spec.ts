@@ -290,4 +290,43 @@ describe('RealtimeGateway', () => {
       );
     });
   });
+
+  describe('rate limiting', () => {
+    it('drops room.join events beyond the per-socket budget', async () => {
+      accessService.assertAppointmentAccess.mockResolvedValue(undefined);
+      const { socket, mock } = createSocketMock();
+      mock.data.user = { sub: 'u1', role: 'patient' };
+
+      for (let index = 0; index < 6; index += 1) {
+        await gateway.handleRoomJoin(socket, { appointmentId: `a${index}` });
+      }
+
+      expect(accessService.assertAppointmentAccess).toHaveBeenCalledTimes(5);
+      expect(realtimeService.getParticipants('a5')).toEqual([]);
+    });
+
+    it('drops audio.chunk events beyond the per-socket budget', async () => {
+      const handler = {
+        handleAudioChunk: jest.fn(),
+        handleAudioEnd: jest.fn(),
+      };
+      realtimeService.setAudioFrameHandler(handler);
+      const { socket, mock } = createSocketMock();
+      mock.data.user = { sub: 'doctor-1', role: 'doctor' };
+      const chunk = {
+        consultationId: 'consultation-1',
+        seq: 1,
+        data: 'AAECAw==',
+        encoding: 'pcm_s16le',
+        sampleRate: 16_000,
+        channels: 1,
+      };
+
+      for (let index = 0; index < 61; index += 1) {
+        await gateway.handleAudioChunk(socket, { ...chunk, seq: index });
+      }
+
+      expect(handler.handleAudioChunk).toHaveBeenCalledTimes(60);
+    });
+  });
 });

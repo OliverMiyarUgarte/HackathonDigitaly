@@ -498,4 +498,38 @@ describe('RecordsService', () => {
       expect(prisma.consultation.findMany).not.toHaveBeenCalled();
     });
   });
+
+  describe('getPreConsult', () => {
+    it('returns answers and records a pre_consult.read audit entry without contents', async () => {
+      access.assertAppointmentAccess.mockResolvedValue(buildAppointment());
+      prisma.preConsultAnswer.findMany.mockResolvedValue([buildAnswer()]);
+
+      const result = await service.getPreConsult(DOCTOR, 'appointment-1');
+
+      expect(result).toHaveLength(1);
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: DOCTOR.sub,
+        action: 'pre_consult.read',
+        resourceType: 'pre_consult',
+        resourceId: 'appointment-1',
+        outcome: 'success',
+      });
+      expect(JSON.stringify(audit.record.mock.calls)).not.toContain(
+        'Palpitacoes',
+      );
+    });
+
+    it('does not audit when appointment access is denied', async () => {
+      access.assertAppointmentAccess.mockRejectedValue(
+        new HttpException({ errorCode: 'FORBIDDEN' }, 403),
+      );
+
+      const error = await expectHttpError(
+        service.getPreConsult(PATIENT, 'appointment-1'),
+      );
+
+      expect(error.getStatus()).toBe(403);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
 });

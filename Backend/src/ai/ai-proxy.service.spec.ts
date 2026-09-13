@@ -245,6 +245,37 @@ describe('AiProxyService', () => {
     );
   });
 
+  it('keeps the session open after audio.end so audio can resume', async () => {
+    const socket = await openReadySession();
+
+    service.handleAudioEnd(
+      { sub: DOCTOR_ID, role: 'doctor' },
+      { consultationId: CONSULTATION_ID, seq: 9 },
+    );
+
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: 'audio.end', seq: 9 }),
+    );
+    expect(socket.send).not.toHaveBeenCalledWith(
+      JSON.stringify({ type: 'session.close' }),
+    );
+    expect(socket.close).not.toHaveBeenCalled();
+    expect(socket.terminate).not.toHaveBeenCalled();
+
+    socket.send.mockClear();
+    service.handleAudioChunk({ sub: DOCTOR_ID, role: 'doctor' }, CHUNK);
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: 'audio.chunk',
+        seq: CHUNK.seq,
+        data: CHUNK.data,
+        encoding: CHUNK.encoding,
+        sampleRate: CHUNK.sampleRate,
+        channels: CHUNK.channels,
+      }),
+    );
+  });
+
   it('closeSession clears the session state', async () => {
     const socket = await openReadySession();
 

@@ -108,6 +108,62 @@ describe('CorrelationIdInterceptor', () => {
     expect(request.correlationId).toMatch(UUID_PATTERN);
   });
 
+  it('rejects a header with unsafe characters and generates a UUID', async () => {
+    const request: MockRequest = {
+      headers: { 'x-correlation-id': 'bad id; rm -rf /' },
+      method: 'GET',
+      path: '/api/health',
+      url: '/api/health',
+    };
+    const response: MockResponse = {
+      setHeader: jest.fn<void, [string, string]>(),
+    };
+
+    await lastValueFrom(
+      interceptor.intercept(createContext(request, response), createNext()),
+    );
+
+    expect(request.correlationId).toMatch(UUID_PATTERN);
+    expect(request.correlationId).not.toBe('bad id; rm -rf /');
+  });
+
+  it('rejects a header longer than 128 characters and generates a UUID', async () => {
+    const request: MockRequest = {
+      headers: { 'x-correlation-id': 'a'.repeat(129) },
+      method: 'GET',
+      path: '/api/health',
+      url: '/api/health',
+    };
+    const response: MockResponse = {
+      setHeader: jest.fn<void, [string, string]>(),
+    };
+
+    await lastValueFrom(
+      interceptor.intercept(createContext(request, response), createNext()),
+    );
+
+    expect(request.correlationId).toMatch(UUID_PATTERN);
+  });
+
+  it('accepts a header at the 128 character boundary', async () => {
+    const boundary = 'a'.repeat(128);
+    const request: MockRequest = {
+      headers: { 'x-correlation-id': boundary },
+      method: 'GET',
+      path: '/api/health',
+      url: '/api/health',
+    };
+    const response: MockResponse = {
+      setHeader: jest.fn<void, [string, string]>(),
+    };
+
+    await lastValueFrom(
+      interceptor.intercept(createContext(request, response), createNext()),
+    );
+
+    expect(request.correlationId).toBe(boundary);
+  });
+
   it('exposes the correlation id and user id to the request handler', async () => {
     const request: MockRequest = {
       headers: { 'x-correlation-id': 'ctx-1' },

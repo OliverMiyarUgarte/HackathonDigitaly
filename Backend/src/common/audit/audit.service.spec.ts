@@ -136,6 +136,34 @@ describe('AuditService', () => {
     }
   });
 
+  it('sanitizes and caps the correlation id before persisting metadata', async () => {
+    requestContext.getCorrelationId.mockReturnValue(`${'x'.repeat(200)}!!!`);
+
+    await service.record({
+      action: 'medical_record.read',
+      resourceType: 'medical_record',
+      resourceId: 'record-1',
+      outcome: 'success',
+    });
+
+    const call = prisma.auditLog.create.mock.calls[0][0];
+    expect(call.data.metadata?.correlationId).toBe('x'.repeat(128));
+  });
+
+  it('omits a correlation id made only of unsafe characters', async () => {
+    requestContext.getCorrelationId.mockReturnValue('!!!');
+
+    await service.record({
+      action: 'medical_record.read',
+      resourceType: 'medical_record',
+      resourceId: 'record-1',
+      outcome: 'success',
+    });
+
+    const call = prisma.auditLog.create.mock.calls[0][0];
+    expect(call.data.metadata).toEqual({ outcome: 'success' });
+  });
+
   it('swallows database failures and logs only a generic message', async () => {
     const errorSpy = jest
       .spyOn(Logger.prototype, 'error')

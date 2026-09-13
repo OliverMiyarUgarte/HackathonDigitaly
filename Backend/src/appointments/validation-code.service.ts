@@ -86,7 +86,7 @@ export class ValidationCodeService {
     }
 
     const attempts = await this.prisma.validationCode.aggregate({
-      where: { appointmentId },
+      where: { appointmentId, consumedAt: null },
       _sum: { attempts: true },
     });
     if ((attempts._sum.attempts ?? 0) >= this.maxAttempts) {
@@ -136,7 +136,13 @@ export class ValidationCodeService {
     const codeHash = this.hashCode(appointmentId, code);
     const expiresAt = new Date(Date.now() + this.ttlSeconds * 1000);
 
-    await this.prisma.$transaction(async (tx) => {
+    const carriedAttempts = await this.prisma.$transaction(async (tx) => {
+      const active = await tx.validationCode.aggregate({
+        where: { appointmentId, consumedAt: null },
+        _sum: { attempts: true },
+      });
+      const previousAttempts = active._sum.attempts ?? 0;
+
       await tx.validationCode.updateMany({
         where: { appointmentId, consumedAt: null },
         data: { consumedAt: new Date() },
@@ -146,9 +152,10 @@ export class ValidationCodeService {
           appointmentId,
           codeHash,
           expiresAt,
-          attempts: 0,
+          attempts: previousAttempts,
         },
       });
+      return previousAttempts;
     });
 
     await this.mailService.sendValidationCode(
@@ -168,7 +175,7 @@ export class ValidationCodeService {
     return {
       appointmentId,
       expiresAt: expiresAt.toISOString(),
-      attemptsRemaining: this.maxAttempts,
+      attemptsRemaining: Math.max(0, this.maxAttempts - carriedAttempts),
     };
   }
 

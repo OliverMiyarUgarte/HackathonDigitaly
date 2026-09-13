@@ -66,6 +66,15 @@ export class RecordsService {
       where: { appointmentId },
       orderBy: { createdAt: 'asc' },
     });
+
+    await this.auditService.record({
+      actorId: user.sub,
+      action: 'pre_consult.read',
+      resourceType: 'pre_consult',
+      resourceId: appointmentId,
+      outcome: 'success',
+    });
+
     return answers.map(toPreConsultAnswerDto);
   }
 

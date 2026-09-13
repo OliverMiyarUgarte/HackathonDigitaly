@@ -249,7 +249,6 @@ export class AiProxyService
       return;
     }
     this.sendFrame(state, { type: 'audio.end', seq: frame.seq });
-    this.closeSession(frame.consultationId);
   }
 
   private getAuthorizedSession(

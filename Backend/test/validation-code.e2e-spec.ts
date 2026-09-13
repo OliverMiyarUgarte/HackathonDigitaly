@@ -194,6 +194,7 @@ describe('Validation code (e2e)', () => {
 
     const body = response.body as RequestCodeResponseDto;
     expect(body.appointmentId).toBe(appointmentId);
+    expect(body.attemptsRemaining).toBe(4);
     expect(sentCodes).toHaveLength(2);
     latestCode = sentCodes[1].code;
 
@@ -204,7 +205,7 @@ describe('Validation code (e2e)', () => {
     const active = codes.filter((code) => code.consumedAt === null);
     expect(active).toHaveLength(1);
     expect(active[0].codeHash).not.toBe(latestCode);
-    expect(active[0].attempts).toBe(0);
+    expect(active[0].attempts).toBe(1);
   });
 
   it('confirms the appointment with the captured code', async () => {

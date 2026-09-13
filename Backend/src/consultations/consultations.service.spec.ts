@@ -2,7 +2,11 @@ import { HttpException } from '@nestjs/common';
 import type { AiProxyService } from '../ai/ai-proxy.service';
 import type { AuditService } from '../common/audit/audit.service';
 import type { AuthenticatedUser } from '../common/types/authenticated-user';
-import type { Appointment, Consultation } from '../generated/prisma/client';
+import type {
+  Appointment,
+  Consultation,
+  User,
+} from '../generated/prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { RealtimeService } from '../realtime/realtime.service';
 import { ConsultationsService } from './consultations.service';
@@ -114,6 +118,22 @@ function buildConsultation(
     endedAt: null,
     createdAt: new Date('2026-06-01T10:00:00.000Z'),
     updatedAt: new Date('2026-06-01T10:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+function buildDoctor(overrides: Partial<User> = {}): User {
+  return {
+    id: DOCTOR.sub,
+    role: 'doctor',
+    name: 'Dra. Helena Marques',
+    email: 'medico@digitaly.health',
+    passwordHash: 'secret-hash',
+    specialty: 'Cardiologia',
+    crm: 'CRM-SP 123456',
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    deletedAt: null,
     ...overrides,
   };
 }
@@ -373,6 +393,37 @@ describe('ConsultationsService', () => {
         action: 'consultation.end',
         resourceType: 'consultation',
         resourceId: 'consultation-1',
+        outcome: 'success',
+      });
+    });
+  });
+
+  describe('listMine', () => {
+    it('returns the patient history and records an audit entry', async () => {
+      prisma.consultation.findMany.mockResolvedValue([
+        {
+          ...buildConsultation(),
+          appointment: { ...buildAppointment(), doctor: buildDoctor() },
+          medicalRecord: null,
+        },
+      ]);
+
+      const result = await service.listMine(PATIENT);
+
+      expect(prisma.consultation.findMany).toHaveBeenCalledWith({
+        where: { appointment: { patientId: PATIENT.sub } },
+        include: {
+          appointment: { include: { doctor: true } },
+          medicalRecord: { select: { diagnosis: true } },
+        },
+        orderBy: { startedAt: 'desc' },
+      });
+      expect(result).toHaveLength(1);
+      expect(audit.record).toHaveBeenCalledWith({
+        actorId: PATIENT.sub,
+        action: 'consultation.history.read',
+        resourceType: 'consultation_history',
+        resourceId: PATIENT.sub,
         outcome: 'success',
       });
     });

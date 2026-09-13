@@ -38,7 +38,7 @@ import { UsersModule } from './users/users.module';
         JWT_EXPIRES_IN: Joi.string().default('15m'),
         JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
         ALLOW_DOCTOR_SELF_REGISTRATION: Joi.boolean().default(false),
-        SWAGGER_ENABLED: Joi.boolean().default(true),
+        SWAGGER_ENABLED: Joi.boolean().default(false),
         MAIL_HOST: Joi.string().optional(),
         MAIL_PORT: Joi.number().optional(),
         MAIL_USER: Joi.string().allow('').optional(),

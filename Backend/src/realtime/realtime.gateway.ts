@@ -23,6 +23,10 @@ import type { AuthenticatedUser } from '../common/types/authenticated-user';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AudioChunkFrame, AudioEndFrame } from './audio-frame-handler';
 import { RealtimeService } from './realtime.service';
+import {
+  SocketRateLimiter,
+  type RealtimeRateLimit,
+} from './socket-rate-limiter';
 
 export type RealtimeSocket = Socket<
   ClientToServerEvents,
@@ -108,6 +112,10 @@ export class RealtimeGateway
 {
   private readonly logger = new Logger(RealtimeGateway.name);
   private readonly handshakes = new WeakMap<RealtimeSocket, Promise<void>>();
+  private readonly rateLimiters = new WeakMap<
+    RealtimeSocket,
+    SocketRateLimiter
+  >();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -167,6 +175,15 @@ export class RealtimeGateway
     return client.data.user ?? null;
   }
 
+  private allow(client: RealtimeSocket, limit: RealtimeRateLimit): boolean {
+    let limiter = this.rateLimiters.get(client);
+    if (!limiter) {
+      limiter = new SocketRateLimiter();
+      this.rateLimiters.set(client, limiter);
+    }
+    return limiter.allow(limit);
+  }
+
   handleDisconnect(client: RealtimeSocket): void {
     const left = this.realtimeService.removeSocket(client.id);
     for (const { appointmentId, participant } of left) {
@@ -188,6 +205,9 @@ export class RealtimeGateway
     @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() payload: unknown,
   ): Promise<void> {
+    if (!this.allow(client, 'room')) {
+      return;
+    }
     const user = await this.requireUser(client);
     if (!user) {
       this.emitRoomError(client, 'UNAUTHENTICATED', 'Authentication required');
@@ -237,6 +257,9 @@ export class RealtimeGateway
     @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() payload: unknown,
   ): Promise<void> {
+    if (!this.allow(client, 'room')) {
+      return;
+    }
     const user = await this.requireUser(client);
     if (!user) {
       this.emitRoomError(client, 'UNAUTHENTICATED', 'Authentication required');
@@ -275,6 +298,9 @@ export class RealtimeGateway
     @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() payload: unknown,
   ): void {
+    if (!this.allow(client, 'signaling')) {
+      return;
+    }
     const relay = this.parseOffer(payload);
     if (!relay || !this.isInRoom(client, relay.appointmentId)) {
       return;
@@ -293,6 +319,9 @@ export class RealtimeGateway
     @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() payload: unknown,
   ): void {
+    if (!this.allow(client, 'signaling')) {
+      return;
+    }
     const relay = this.parseOffer(payload);
     if (!relay || !this.isInRoom(client, relay.appointmentId)) {
       return;
@@ -311,6 +340,9 @@ export class RealtimeGateway
     @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() payload: unknown,
   ): void {
+    if (!this.allow(client, 'signaling')) {
+      return;
+    }
     const relay = this.parseIce(payload);
     if (!relay || !this.isInRoom(client, relay.appointmentId)) {
       return;
@@ -331,6 +363,9 @@ export class RealtimeGateway
     @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() payload: unknown,
   ): void {
+    if (!this.allow(client, 'signaling')) {
+      return;
+    }
     const relay = this.parseMediaState(payload);
     if (!relay || !this.isInRoom(client, relay.appointmentId)) {
       return;
@@ -350,6 +385,9 @@ export class RealtimeGateway
     @ConnectedSocket() client: RealtimeSocket,
     @MessageBody() payload: unknown,
   ): Promise<void> {
+    if (!this.allow(client, 'audio')) {
+      return;
+    }
     const user = client.data.user;
     const frame = this.parseAudioChunk(payload);
     const handler = this.realtimeService.getAudioFrameHandler();

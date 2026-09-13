@@ -1,13 +1,15 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { APP_VERSION } from './common/constants/app-version';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableShutdownHooks();
+  app.set('trust proxy', 1);
   const configService = app.get(ConfigService);
 
   app.setGlobalPrefix('api');
@@ -31,7 +33,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  const swaggerEnabled = configService.get<boolean>('SWAGGER_ENABLED', true);
+  const swaggerEnabled = configService.get<boolean>('SWAGGER_ENABLED', false);
   if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Digitaly Telemedicine API')

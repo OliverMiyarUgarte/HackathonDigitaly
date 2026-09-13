@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { sanitizeCorrelationId } from '../context/correlation-id';
 import { RequestContextService } from '../context/request-context.service';
 
 export type AuditOutcome = 'success' | 'denied';
@@ -54,7 +55,9 @@ export class AuditService {
     if (entry.outcome) {
       metadata.outcome = entry.outcome;
     }
-    const correlationId = this.requestContext.getCorrelationId();
+    const correlationId = sanitizeCorrelationId(
+      this.requestContext.getCorrelationId(),
+    );
     if (correlationId) {
       metadata.correlationId = correlationId;
     }

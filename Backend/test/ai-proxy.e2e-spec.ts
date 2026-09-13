@@ -591,12 +591,13 @@ describe('AI proxy (e2e)', () => {
     const closed = fakeSocketClosed;
     expect(closed).not.toBeNull();
     doctorSocket.emit('audio.end', { consultationId: consultationA, seq: 2 });
-    await closed;
+    await waitUntil(() =>
+      fakeReceived.some((frame) => frame.type === 'audio.end'),
+    );
 
     expect(fakeReceived.map((frame) => frame.type)).toEqual([
       'audio.chunk',
       'audio.end',
-      'session.close',
     ]);
     expect(fakeReceived[0].seq).toBe(1);
     expect(fakeReceived[1].seq).toBe(2);
@@ -610,6 +611,13 @@ describe('AI proxy (e2e)', () => {
       appointmentId: appointmentA,
       status: 'ended',
     });
+
+    await closed;
+    expect(fakeReceived.map((frame) => frame.type)).toEqual([
+      'audio.chunk',
+      'audio.end',
+      'session.close',
+    ]);
   });
 
   it('keeps the consultation running with ai.status unavailable when the service is down', async () => {

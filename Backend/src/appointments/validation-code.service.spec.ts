@@ -212,6 +212,9 @@ describe('ValidationCodeService', () => {
   function mockIssueAppointment(): void {
     access.assertAppointmentAccess.mockResolvedValue(buildAppointment());
     prisma.user.findUnique.mockResolvedValue({ email: 'patient@example.test' });
+    prisma.validationCode.aggregate.mockResolvedValue({
+      _sum: { attempts: null },
+    });
     prisma.validationCode.create.mockImplementation(
       (args: ValidationCodeCreateCall) =>
         Promise.resolve({
@@ -277,11 +280,15 @@ describe('ValidationCodeService', () => {
   });
 
   describe('resend', () => {
-    it('invalidates the previous code and resets attempts', async () => {
+    it('invalidates the previous code and carries accumulated attempts', async () => {
       mockIssueAppointment();
 
       await service.request(PATIENT, 'appointment-1');
-      await service.resend(PATIENT, 'appointment-1');
+      prisma.validationCode.aggregate.mockResolvedValue({
+        _sum: { attempts: 1 },
+      });
+
+      const result = await service.resend(PATIENT, 'appointment-1');
 
       expect(prisma.validationCode.updateMany).toHaveBeenCalledWith({
         where: { appointmentId: 'appointment-1', consumedAt: null },
@@ -289,7 +296,8 @@ describe('ValidationCodeService', () => {
       });
       expect(prisma.validationCode.create).toHaveBeenCalledTimes(2);
       const secondCall = prisma.validationCode.create.mock.calls[1][0];
-      expect(secondCall.data.attempts).toBe(0);
+      expect(secondCall.data.attempts).toBe(1);
+      expect(result.attemptsRemaining).toBe(4);
       expect(mail.sendValidationCode).toHaveBeenCalledTimes(2);
     });
   });
@@ -419,7 +427,7 @@ describe('ValidationCodeService', () => {
       });
       expect(prisma.validationCode.update).not.toHaveBeenCalled();
       expect(prisma.validationCode.aggregate).toHaveBeenCalledWith({
-        where: { appointmentId: 'appointment-1' },
+        where: { appointmentId: 'appointment-1', consumedAt: null },
         _sum: { attempts: true },
       });
     });

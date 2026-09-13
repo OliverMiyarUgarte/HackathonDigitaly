@@ -10,7 +10,7 @@ const prisma = new PrismaClient({
   }),
 });
 
-const DEMO_PASSWORD = 'Demo@1234';
+const DEMO_PASSWORD_FALLBACK = 'Demo@1234';
 
 const DEMO_IDS = {
   pendingAppointment: 'a0000000-0000-4000-8000-000000000001',
@@ -47,7 +47,12 @@ async function main(): Promise<void> {
     throw new Error('OTP_PEPPER is required to seed the demo validation code');
   }
 
-  const passwordHash = await hash(DEMO_PASSWORD, { type: argon2id });
+  const passwordHash = await hash(
+    process.env.SEED_DEMO_PASSWORD && process.env.SEED_DEMO_PASSWORD.length > 0
+      ? process.env.SEED_DEMO_PASSWORD
+      : DEMO_PASSWORD_FALLBACK,
+    { type: argon2id },
+  );
 
   const doctor = await prisma.user.upsert({
     where: { email: 'medico@digitaly.health' },

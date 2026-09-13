@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { Observable } from 'rxjs';
 import type { Subscription } from 'rxjs';
 import { RequestContextService } from '../context/request-context.service';
+import { isValidCorrelationId } from '../context/correlation-id';
 import type { RequestWithContext } from '../types/request-with-context';
 
 @Injectable()
@@ -21,10 +22,9 @@ export class CorrelationIdInterceptor implements NestInterceptor {
     const response = http.getResponse<Response>();
     const header = request.headers['x-correlation-id'];
     const provided = Array.isArray(header) ? header[0] : header;
-    const correlationId =
-      typeof provided === 'string' && provided.trim().length > 0
-        ? provided
-        : randomUUID();
+    const correlationId = isValidCorrelationId(provided)
+      ? provided
+      : randomUUID();
 
     request.correlationId = correlationId;
     response.setHeader('x-correlation-id', correlationId);

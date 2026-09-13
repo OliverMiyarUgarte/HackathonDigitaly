@@ -232,6 +232,14 @@ export class ConsultationsService {
       orderBy: { startedAt: 'desc' },
     });
 
+    await this.auditService.record({
+      actorId: patient.sub,
+      action: 'consultation.history.read',
+      resourceType: 'consultation_history',
+      resourceId: patient.sub,
+      outcome: 'success',
+    });
+
     return consultations.map((consultation) =>
       toConsultationHistoryItem(consultation),
     );

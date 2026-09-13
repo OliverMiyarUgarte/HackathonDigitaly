@@ -32,6 +32,9 @@ export class MailService {
       host,
       port,
       secure: port === 465,
+      ...(port === 587
+        ? { requireTLS: true, tls: { minVersion: 'TLSv1.2' } }
+        : {}),
       ...(user.length > 0 ? { auth: { user, pass: password } } : {}),
     });
   }

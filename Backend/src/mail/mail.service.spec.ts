@@ -136,6 +136,31 @@ describe('MailService', () => {
     });
   });
 
+  it('requires STARTTLS and a TLS 1.2 floor on port 587', () => {
+    mockedCreateTransport.mockReturnValue(createTransportDouble().transporter);
+
+    createService({ MAIL_PORT: 587 });
+
+    const options = mockedCreateTransport.mock.calls[0][0];
+    expect(options).toMatchObject({
+      port: 587,
+      secure: false,
+      requireTLS: true,
+      tls: { minVersion: 'TLSv1.2' },
+    });
+  });
+
+  it('uses implicit TLS on port 465 and omits STARTTLS options', () => {
+    mockedCreateTransport.mockReturnValue(createTransportDouble().transporter);
+
+    createService({ MAIL_PORT: 465 });
+
+    const options = mockedCreateTransport.mock.calls[0][0];
+    expect(options).toMatchObject({ port: 465, secure: true });
+    expect(options).not.toHaveProperty('requireTLS');
+    expect(options).not.toHaveProperty('tls');
+  });
+
   it('rejects empty recipient or code without sending', async () => {
     const { transporter, sendMail } = createTransportDouble();
     mockedCreateTransport.mockReturnValue(transporter);
