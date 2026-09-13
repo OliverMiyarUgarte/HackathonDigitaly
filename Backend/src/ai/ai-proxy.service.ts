@@ -27,23 +27,32 @@ const HTTP_TIMEOUT_MS = 2_000;
 const WS_TIMEOUT_MS = 2_000;
 const MAX_BUFFERED_FRAMES = 64;
 const OPEN_RETRY_COOLDOWN_MS = 5_000;
+const SUMMARY_FALLBACK_MS = 30_000;
 const INTERNAL_TOKEN_HEADER = 'X-Internal-Token';
 const DEFAULT_HTTP_BASE_URL = 'http://localhost:8000';
+
+type SummaryReadyFrame = Extract<AiServerFrame, { type: 'summary.ready' }>;
 
 export interface OpenAiSessionInput {
   consultationId: string;
   appointmentId: string;
   doctorId?: string;
+  patientId?: string;
 }
 
 interface AiSessionState {
   consultationId: string;
   appointmentId: string;
   doctorId: string;
+  patientId: string;
   sessionId: string | null;
   socket: WebSocket | null;
   ready: boolean;
   closed: boolean;
+  finalized: boolean;
+  summaryHandled: boolean;
+  lastSeq: number;
+  summaryTimer: NodeJS.Timeout | null;
   buffer: AiClientFrame[];
 }
 
@@ -128,6 +137,20 @@ function parseAiServerFrame(raw: string): AiServerFrame | null {
         };
       }
       return null;
+    case 'summary.ready':
+      if (
+        typeof parsed.doctorSummary === 'string' &&
+        typeof parsed.patientSummary === 'string' &&
+        typeof parsed.at === 'string'
+      ) {
+        return {
+          type: 'summary.ready',
+          doctorSummary: parsed.doctorSummary,
+          patientSummary: parsed.patientSummary,
+          at: parsed.at,
+        };
+      }
+      return null;
     case 'error':
       if (
         typeof parsed.code === 'string' &&
@@ -189,19 +212,24 @@ export class AiProxyService
       return;
     }
 
-    const doctorId = await this.resolveDoctorId(input);
-    if (!doctorId) {
+    const participants = await this.resolveParticipants(input);
+    if (!participants) {
       return;
     }
 
     const state: AiSessionState = {
       consultationId,
       appointmentId,
-      doctorId,
+      doctorId: participants.doctorId,
+      patientId: participants.patientId,
       sessionId: null,
       socket: null,
       ready: false,
       closed: false,
+      finalized: false,
+      summaryHandled: false,
+      lastSeq: 0,
+      summaryTimer: null,
       buffer: [],
     };
     this.sessions.set(consultationId, state);
@@ -231,6 +259,16 @@ export class AiProxyService
     this.disposeSession(consultationId, false);
   }
 
+  finalizeSession(consultationId: string): void {
+    const state = this.sessions.get(consultationId);
+    if (!state || state.closed || state.finalized) {
+      return;
+    }
+    state.finalized = true;
+    this.sendFrame(state, { type: 'audio.end', seq: state.lastSeq });
+    this.scheduleSummaryTimeout(state);
+  }
+
   handleAudioChunk(user: AuthenticatedUser, frame: AudioChunkFrame): void {
     const state = this.getAuthorizedSession(user, frame.consultationId);
     if (state) {
@@ -245,10 +283,12 @@ export class AiProxyService
     if (!state) {
       return;
     }
+    state.lastSeq = frame.seq;
     this.sendFrame(state, { type: 'audio.end', seq: frame.seq });
   }
 
   private forwardChunk(state: AiSessionState, frame: AudioChunkFrame): void {
+    state.lastSeq = frame.seq;
     this.sendFrame(state, {
       type: 'audio.chunk',
       seq: frame.seq,
@@ -282,13 +322,14 @@ export class AiProxyService
         select: {
           status: true,
           appointmentId: true,
-          appointment: { select: { doctorId: true } },
+          appointment: { select: { doctorId: true, patientId: true } },
         },
       });
       if (!consultation || consultation.status !== 'active') {
         return;
       }
       const doctorId = consultation.appointment?.doctorId;
+      const patientId = consultation.appointment?.patientId;
       if (!doctorId || doctorId !== user.sub) {
         return;
       }
@@ -296,6 +337,7 @@ export class AiProxyService
         consultationId,
         appointmentId: consultation.appointmentId,
         doctorId,
+        patientId,
       });
       const state = this.getAuthorizedSession(user, frame.consultationId);
       if (state) {
@@ -322,18 +364,26 @@ export class AiProxyService
     return state;
   }
 
-  private async resolveDoctorId(
+  private async resolveParticipants(
     input: OpenAiSessionInput,
-  ): Promise<string | null> {
-    if (input.doctorId && input.doctorId.length > 0) {
-      return input.doctorId;
+  ): Promise<{ doctorId: string; patientId: string } | null> {
+    if (input.doctorId && input.patientId) {
+      return { doctorId: input.doctorId, patientId: input.patientId };
     }
     try {
       const appointment = await this.prisma.appointment.findUnique({
         where: { id: input.appointmentId },
-        select: { doctorId: true },
+        select: { doctorId: true, patientId: true },
       });
-      return appointment?.doctorId ?? null;
+      if (!appointment) {
+        return null;
+      }
+      const doctorId = input.doctorId ?? appointment.doctorId;
+      const patientId = input.patientId ?? appointment.patientId;
+      if (!doctorId || !patientId) {
+        return null;
+      }
+      return { doctorId, patientId };
     } catch {
       return null;
     }
@@ -465,6 +515,9 @@ export class AiProxyService
           tags: frame.tags,
         });
         return;
+      case 'summary.ready':
+        void this.persistSummary(state, frame);
+        return;
       case 'error':
         this.emitStatus(state, 'unavailable');
         this.closeSession(state.consultationId);
@@ -482,6 +535,70 @@ export class AiProxyService
       consultationId: state.consultationId,
       status,
     });
+  }
+
+  private async persistSummary(
+    state: AiSessionState,
+    frame: SummaryReadyFrame,
+  ): Promise<void> {
+    if (state.summaryHandled) {
+      return;
+    }
+    state.summaryHandled = true;
+
+    const generatedAt = new Date(frame.at);
+    const at = Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt;
+
+    try {
+      const consultation = await this.prisma.consultation.findUnique({
+        where: { id: state.consultationId },
+        select: { summaryGeneratedAt: true },
+      });
+      if (consultation && !consultation.summaryGeneratedAt) {
+        await this.prisma.consultation.updateMany({
+          where: { id: state.consultationId, summaryGeneratedAt: null },
+          data: {
+            doctorSummary: frame.doctorSummary,
+            patientSummary: frame.patientSummary,
+            summaryGeneratedAt: at,
+          },
+        });
+      }
+
+      const payload = {
+        consultationId: state.consultationId,
+        doctorSummary: frame.doctorSummary,
+        patientSummary: frame.patientSummary,
+        generatedAt: at.toISOString(),
+      };
+      this.realtime.emitToAppointment(
+        state.appointmentId,
+        'consultation.summary',
+        payload,
+      );
+      this.realtime.emitToUser(state.doctorId, 'consultation.summary', payload);
+      this.realtime.emitToUser(
+        state.patientId,
+        'consultation.summary',
+        payload,
+      );
+    } catch {
+      this.logger.warn('Consultation summary persistence failed');
+    } finally {
+      this.disposeSession(state.consultationId, false);
+    }
+  }
+
+  private scheduleSummaryTimeout(state: AiSessionState): void {
+    if (state.summaryTimer) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      state.summaryTimer = null;
+      this.disposeSession(state.consultationId, true);
+    }, SUMMARY_FALLBACK_MS);
+    timer.unref();
+    state.summaryTimer = timer;
   }
 
   private sendFrame(state: AiSessionState, frame: AiClientFrame): void {
@@ -517,6 +634,10 @@ export class AiProxyService
     state.closed = true;
     state.ready = false;
     state.buffer = [];
+    if (state.summaryTimer) {
+      clearTimeout(state.summaryTimer);
+      state.summaryTimer = null;
+    }
     const socket = state.socket;
     state.socket = null;
     this.sessions.delete(consultationId);

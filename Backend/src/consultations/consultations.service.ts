@@ -7,6 +7,7 @@ import {
 import type {
   ConsultationDto,
   ConsultationHistoryItemDto,
+  ConsultationSummaryDto,
   CounterpartDto,
   EndConsultationResponseDto,
   StartConsultationResponseDto,
@@ -100,6 +101,7 @@ export class ConsultationsService {
       consultationId,
       appointmentId,
       doctorId: appointment.doctorId,
+      patientId: appointment.patientId,
     });
 
     await this.auditService.record({
@@ -165,7 +167,7 @@ export class ConsultationsService {
       },
     );
 
-    this.aiProxy.closeSession(consultationId);
+    this.aiProxy.finalizeSession(consultationId);
 
     await this.auditService.record({
       actorId: doctor.sub,
@@ -206,6 +208,44 @@ export class ConsultationsService {
     }
 
     return toConsultationDto(consultation);
+  }
+
+  async getSummary(
+    user: AuthenticatedUser,
+    consultationId: string,
+  ): Promise<ConsultationSummaryDto> {
+    const consultation = await this.prisma.consultation.findUnique({
+      where: { id: consultationId },
+      select: {
+        id: true,
+        doctorSummary: true,
+        patientSummary: true,
+        summaryGeneratedAt: true,
+        appointment: { select: { patientId: true, doctorId: true } },
+      },
+    });
+    if (!consultation) {
+      throw this.notFound('Consultation not found');
+    }
+
+    const isParticipant =
+      consultation.appointment.patientId === user.sub ||
+      consultation.appointment.doctorId === user.sub;
+    if (!isParticipant) {
+      throw this.forbidden();
+    }
+
+    const { doctorSummary, patientSummary, summaryGeneratedAt } = consultation;
+    if (!doctorSummary || !patientSummary || !summaryGeneratedAt) {
+      throw this.notFound('Consultation summary not found');
+    }
+
+    return {
+      consultationId: consultation.id,
+      doctorSummary,
+      patientSummary,
+      generatedAt: summaryGeneratedAt.toISOString(),
+    };
   }
 
   async listMine(

@@ -12,6 +12,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type {
   ConsultationDto,
   ConsultationHistoryItemDto,
+  ConsultationSummaryDto,
   EndConsultationResponseDto,
   StartConsultationResponseDto,
 } from '@telemed/service-contracts';
@@ -51,6 +52,15 @@ export class ConsultationsController {
       query.from ? new Date(query.from) : undefined,
       query.to ? new Date(query.to) : undefined,
     );
+  }
+
+  @ApiOperation({ summary: 'Get the AI-generated whole-call summary' })
+  @Get('consultations/:id/summary')
+  getSummary(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ConsultationSummaryDto> {
+    return this.consultationsService.getSummary(user, id);
   }
 
   @ApiOperation({ summary: 'Get one consultation' })

@@ -46,6 +46,7 @@ interface RealtimeMock {
 interface AiProxyMock {
   openSession: jest.Mock;
   closeSession: jest.Mock;
+  finalizeSession: jest.Mock;
 }
 
 interface AuditMock {
@@ -90,6 +91,7 @@ function createAiProxyMock(): AiProxyMock {
   return {
     openSession: jest.fn().mockResolvedValue(undefined),
     closeSession: jest.fn(),
+    finalizeSession: jest.fn(),
   };
 }
 
@@ -318,6 +320,7 @@ describe('ConsultationsService', () => {
         consultationId: 'consultation-new',
         appointmentId: 'appointment-1',
         doctorId: DOCTOR.sub,
+        patientId: PATIENT.sub,
       });
       expect(audit.record).toHaveBeenCalledWith({
         actorId: DOCTOR.sub,
@@ -390,7 +393,8 @@ describe('ConsultationsService', () => {
           endedAt: expect.any(String) as string,
         }),
       );
-      expect(aiProxy.closeSession).toHaveBeenCalledWith('consultation-1');
+      expect(aiProxy.finalizeSession).toHaveBeenCalledWith('consultation-1');
+      expect(aiProxy.closeSession).not.toHaveBeenCalled();
       expect(audit.record).toHaveBeenCalledWith({
         actorId: DOCTOR.sub,
         action: 'consultation.end',
@@ -398,6 +402,83 @@ describe('ConsultationsService', () => {
         resourceId: 'consultation-1',
         outcome: 'success',
       });
+    });
+  });
+
+  describe('getSummary', () => {
+    it('returns the summary DTO to a participant', async () => {
+      const generatedAt = new Date('2026-06-01T11:00:00.000Z');
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: 'consultation-1',
+        doctorSummary: 'Resumo clinico',
+        patientSummary: 'Resumo do paciente',
+        summaryGeneratedAt: generatedAt,
+        appointment: { patientId: PATIENT.sub, doctorId: DOCTOR.sub },
+      });
+
+      const result = await service.getSummary(PATIENT, 'consultation-1');
+
+      expect(prisma.consultation.findUnique).toHaveBeenCalledWith({
+        where: { id: 'consultation-1' },
+        select: {
+          id: true,
+          doctorSummary: true,
+          patientSummary: true,
+          summaryGeneratedAt: true,
+          appointment: { select: { patientId: true, doctorId: true } },
+        },
+      });
+      expect(result).toEqual({
+        consultationId: 'consultation-1',
+        doctorSummary: 'Resumo clinico',
+        patientSummary: 'Resumo do paciente',
+        generatedAt: generatedAt.toISOString(),
+      });
+    });
+
+    it('returns 404 NOT_FOUND for an unknown consultation', async () => {
+      prisma.consultation.findUnique.mockResolvedValue(null);
+
+      const error = await expectHttpError(
+        service.getSummary(PATIENT, 'missing-consultation'),
+      );
+
+      expect(error.getStatus()).toBe(404);
+      expect(error.getResponse()).toMatchObject({ errorCode: 'NOT_FOUND' });
+    });
+
+    it('returns 403 FORBIDDEN for a non-participant', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: 'consultation-1',
+        doctorSummary: 'Resumo clinico',
+        patientSummary: 'Resumo do paciente',
+        summaryGeneratedAt: new Date('2026-06-01T11:00:00.000Z'),
+        appointment: { patientId: 'other-patient', doctorId: DOCTOR.sub },
+      });
+
+      const error = await expectHttpError(
+        service.getSummary(PATIENT, 'consultation-1'),
+      );
+
+      expect(error.getStatus()).toBe(403);
+      expect(error.getResponse()).toMatchObject({ errorCode: 'FORBIDDEN' });
+    });
+
+    it('returns 404 NOT_FOUND when the summary has not been generated yet', async () => {
+      prisma.consultation.findUnique.mockResolvedValue({
+        id: 'consultation-1',
+        doctorSummary: null,
+        patientSummary: null,
+        summaryGeneratedAt: null,
+        appointment: { patientId: PATIENT.sub, doctorId: DOCTOR.sub },
+      });
+
+      const error = await expectHttpError(
+        service.getSummary(PATIENT, 'consultation-1'),
+      );
+
+      expect(error.getStatus()).toBe(404);
+      expect(error.getResponse()).toMatchObject({ errorCode: 'NOT_FOUND' });
     });
   });
 
