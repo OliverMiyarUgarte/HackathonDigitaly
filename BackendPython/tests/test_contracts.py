@@ -21,6 +21,7 @@ MODEL_NAMES = (
     "AiTranscriptPartialFrame",
     "AiTranscriptFinalFrame",
     "AiCopilotFeedbackFrame",
+    "AiSummaryReadyFrame",
     "AiErrorFrame",
 )
 

@@ -39,6 +39,8 @@ class Session:
     partial_task: asyncio.Task[None] | None = None
     websocket: WebSocket | None = None
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    summary_sent: bool = False
+    transcript_parts: list[str] = field(default_factory=list)
 
     @property
     def expires_at(self) -> datetime:

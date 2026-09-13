@@ -18,6 +18,7 @@ from app.models import (
     AiCopilotFeedbackFrame,
     AiErrorFrame,
     AiSessionCloseFrame,
+    AiSummaryReadyFrame,
     AiTranscriptFinalFrame,
     AiTranscriptPartialFrame,
 )
@@ -28,6 +29,7 @@ from app.session import Session, iso_timestamp
 logger = logging.getLogger("digitaly.ai.pipeline")
 
 _BYTES_PER_SAMPLE = 2
+_SUMMARY_TRANSCRIPT_LIMIT = 12_000
 
 
 async def run_audio_session(
@@ -126,39 +128,69 @@ async def _finalize(
     session.buffer.clear()
     session.bytes_since_partial = 0
     session.touch()
-    if samples.size == 0:
+    if samples.size > 0:
+        try:
+            text = await transcriber.transcribe(samples, settings.target_sample_rate)
+        except TranscriptionError:
+            await _send_error(session, "TRANSCRIPTION_FAILED", "Falha na transcrição final.")
+            return
+        if text:
+            session.transcript_parts.append(text)
+            await session.send(
+                AiTranscriptFinalFrame(
+                    type="transcript.final",
+                    segmentId=uuid4().hex,
+                    text=text,
+                    at=iso_timestamp(),
+                )
+            )
+            try:
+                items = await copilot.feedback(text)
+            except Exception:
+                logger.exception("copilot feedback failed")
+                await _send_error(session, "COPILOT_FAILED", "Falha ao gerar sugestões.")
+            else:
+                for item in items:
+                    await session.send(
+                        AiCopilotFeedbackFrame(
+                            type="copilot.feedback",
+                            severity=item.severity,
+                            message=item.message,
+                            at=iso_timestamp(),
+                            tags=list(item.tags),
+                        )
+                    )
+    await _emit_summary(session, copilot)
+
+
+async def _emit_summary(session: Session, copilot: Copilot) -> None:
+    if session.summary_sent:
         return
+    transcript = " ".join(session.transcript_parts).strip()
+    if not transcript:
+        return
+    session.summary_sent = True
+    bounded = transcript[-_SUMMARY_TRANSCRIPT_LIMIT:]
     try:
-        text = await transcriber.transcribe(samples, settings.target_sample_rate)
-    except TranscriptionError:
-        await _send_error(session, "TRANSCRIPTION_FAILED", "Falha na transcrição final.")
+        doctor_summary, patient_summary = await asyncio.gather(
+            copilot.doctor_report(bounded),
+            copilot.patient_report(bounded),
+        )
+    except Exception:
+        logger.exception("summary generation failed")
+        await _send_error(session, "SUMMARY_FAILED", "Falha ao gerar o resumo da consulta.")
         return
-    if not text:
+    if not doctor_summary.strip() or not patient_summary.strip():
+        await _send_error(session, "SUMMARY_FAILED", "Resumo da consulta vazio.")
         return
     await session.send(
-        AiTranscriptFinalFrame(
-            type="transcript.final",
-            segmentId=uuid4().hex,
-            text=text,
+        AiSummaryReadyFrame(
+            type="summary.ready",
+            doctorSummary=doctor_summary,
+            patientSummary=patient_summary,
             at=iso_timestamp(),
         )
     )
-    try:
-        items = await copilot.feedback(text)
-    except Exception:
-        logger.exception("copilot feedback failed")
-        await _send_error(session, "COPILOT_FAILED", "Falha ao gerar sugestões.")
-        return
-    for item in items:
-        await session.send(
-            AiCopilotFeedbackFrame(
-                type="copilot.feedback",
-                severity=item.severity,
-                message=item.message,
-                at=iso_timestamp(),
-                tags=list(item.tags),
-            )
-        )
 
 
 async def _emit_partial(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
@@ -7,7 +8,11 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from tests.conftest import TEST_HEADERS
+from app.pipeline import run_audio_session
+from app.providers.copilot import Feedback
+from app.providers.transcriber import FakeTranscriber
+from app.session import create_session as create_ai_session
+from tests.conftest import TEST_HEADERS, build_settings
 from tests.helpers import audio_chunk, create_session_payload, wait_until
 
 
@@ -42,6 +47,15 @@ def collect_finals(ws: Any, count: int, limit: int = 80) -> list[dict[str, Any]]
             if seen >= count:
                 break
     return frames
+
+
+def drain_frames(ws: Any) -> list[dict[str, Any]]:
+    frames: list[dict[str, Any]] = []
+    while True:
+        try:
+            frames.append(ws.receive_json())
+        except WebSocketDisconnect:
+            return frames
 
 
 def test_full_fake_run_produces_all_frames(client_factory) -> None:
@@ -188,3 +202,83 @@ def test_session_close_tears_down(client_factory) -> None:
             ws.receive_json()
     assert excinfo.value.code == 1000
     assert client.app.state.sessions.get(session_id) is None
+
+
+def test_audio_end_emits_single_summary(client_factory) -> None:
+    client: TestClient = client_factory()
+    session_id = create_session(client)
+    with client.websocket_connect(f"/sessions/{session_id}/audio", headers=TEST_HEADERS) as ws:
+        ws.send_json(audio_chunk(0))
+        ws.send_json(audio_chunk(1))
+        ws.send_json({"type": "audio.end", "seq": 2})
+        ws.send_json({"type": "session.close", "reason": "test"})
+        frames = drain_frames(ws)
+
+    finals = [frame for frame in frames if frame["type"] == "transcript.final"]
+    summaries = [frame for frame in frames if frame["type"] == "summary.ready"]
+    assert len(finals) == 1
+    assert len(summaries) == 1
+    summary = summaries[0]
+    assert summary["doctorSummary"].strip()
+    assert summary["patientSummary"].strip()
+    assert summary["at"].endswith("Z")
+
+
+def test_second_audio_end_does_not_reemit_summary(client_factory) -> None:
+    client: TestClient = client_factory()
+    session_id = create_session(client)
+    with client.websocket_connect(f"/sessions/{session_id}/audio", headers=TEST_HEADERS) as ws:
+        ws.send_json(audio_chunk(0))
+        ws.send_json({"type": "audio.end", "seq": 1})
+        ws.send_json(audio_chunk(2))
+        ws.send_json({"type": "audio.end", "seq": 3})
+        ws.send_json({"type": "session.close", "reason": "test"})
+        frames = drain_frames(ws)
+
+    finals = [frame for frame in frames if frame["type"] == "transcript.final"]
+    summaries = [frame for frame in frames if frame["type"] == "summary.ready"]
+    assert len(finals) == 2
+    assert len(summaries) == 1
+
+
+class _FailingReportCopilot:
+    name = "failing"
+
+    async def feedback(self, transcript: str) -> list[Feedback]:
+        return []
+
+    async def doctor_report(self, transcript: str) -> str:
+        raise RuntimeError("doctor report failed")
+
+    async def patient_report(self, transcript: str) -> str:
+        raise RuntimeError("patient report failed")
+
+
+class _RecordingWebSocket:
+    def __init__(self, frames: list[str]) -> None:
+        self._frames = frames
+        self.sent: list[dict[str, Any]] = []
+
+    async def receive_text(self) -> str:
+        if not self._frames:
+            raise WebSocketDisconnect(code=1000)
+        return self._frames.pop(0)
+
+    async def send_text(self, data: str) -> None:
+        self.sent.append(json.loads(data))
+
+
+async def test_summary_failure_emits_error_and_keeps_session() -> None:
+    settings = build_settings()
+    session = create_ai_session("consultation-1", "appointment-1", "pt-BR", settings)
+    frames = [
+        json.dumps(audio_chunk(0)),
+        json.dumps({"type": "audio.end", "seq": 1}),
+    ]
+    ws = _RecordingWebSocket(frames)
+    await run_audio_session(session, ws, settings, FakeTranscriber(), _FailingReportCopilot())
+    types = [frame["type"] for frame in ws.sent]
+    errors = [frame for frame in ws.sent if frame["type"] == "error"]
+    assert "transcript.final" in types
+    assert any(frame["code"] == "SUMMARY_FAILED" for frame in errors)
+    assert session.closed is False

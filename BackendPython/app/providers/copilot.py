@@ -133,6 +133,17 @@ def _normalize(text: str) -> str:
     return "".join(char for char in decomposed if not unicodedata.combining(char)).lower()
 
 
+def _findings(transcript: str) -> list[Feedback]:
+    normalized = _normalize(transcript).strip()
+    if not normalized:
+        return []
+    found: list[Feedback] = []
+    for terms, severity, message, tags in _RULES:
+        if any(term in normalized for term in terms):
+            found.append(Feedback(severity=severity, message=message, tags=tags))
+    return found
+
+
 class RuleCopilot:
     name = "rule"
 
@@ -140,24 +151,20 @@ class RuleCopilot:
         self._max_items = max(1, max_items)
 
     async def feedback(self, transcript: str) -> list[Feedback]:
-        normalized = _normalize(transcript).strip()
-        if not normalized:
+        if not _normalize(transcript).strip():
             return []
-        found: list[Feedback] = []
-        for terms, severity, message, tags in _RULES:
-            if any(term in normalized for term in terms):
-                found.append(Feedback(severity=severity, message=message, tags=tags))
+        found = _findings(transcript)
         if not found:
-            found.append(
+            return [
                 Feedback(severity="info", message=_INFORMATION_FEEDBACK, tags=("next_question",))
-            )
+            ]
         return found[: self._max_items]
 
     async def doctor_report(self, transcript: str) -> str:
-        return _fallback_doctor_report()
+        return _fallback_doctor_report(_findings(transcript))
 
     async def patient_report(self, transcript: str) -> str:
-        return _fallback_patient_report()
+        return _fallback_patient_report(_findings(transcript))
 
 
 class LlmCopilot:
@@ -188,13 +195,13 @@ class LlmCopilot:
         try:
             return await self._complete(DOCTOR_SYSTEM_PROMPT, transcript, temperature=0.2)
         except CopilotError:
-            return _fallback_doctor_report()
+            return await self._fallback.doctor_report(transcript)
 
     async def patient_report(self, transcript: str) -> str:
         try:
             return await self._complete(PATIENT_SYSTEM_PROMPT, transcript, temperature=0.3)
         except CopilotError:
-            return _fallback_patient_report()
+            return await self._fallback.patient_report(transcript)
 
     async def _request_feedback(self, transcript: str) -> list[Feedback]:
         content = await self._complete(
@@ -302,25 +309,49 @@ def _merge_feedback(deterministic: list[Feedback], generated: list[Feedback]) ->
     return merged
 
 
-def _fallback_doctor_report() -> str:
+def _fallback_doctor_report(findings: list[Feedback]) -> str:
+    red_flags = [item.message for item in findings if "red_flag" in item.tags]
+    medications = [item.message for item in findings if "medication" in item.tags]
+    allergies = [item.message for item in findings if "allergy" in item.tags]
+    if red_flags:
+        symptoms = "\n".join(f"- {message}" for message in red_flags)
+    else:
+        symptoms = "- Sem sinais de alarme identificados automaticamente no relato."
+    observations = [f"- {message}" for message in medications]
+    observations += [f"- {message}" for message in allergies]
+    observations.append("- Resumo gerado localmente, sem envio de dados a provedores externos.")
     return (
         "### Sintomas relatados\n"
-        "- Relato transcrito durante a consulta. Revise o trecho final para detalhes.\n\n"
+        f"{symptoms}\n\n"
         "### Hipótese diagnóstica\n"
         "- A definir pelo médico responsável com base no exame clínico.\n\n"
         "### Conduta e exames solicitados\n"
-        "- Confirmar conduta e exames durante a consulta.\n\n"
-        "### Observações adicionais\n"
-        "- Resumo gerado localmente, sem chamada a provedores externos."
+        "- Confirmar conduta e solicitar exames conforme avaliação clínica.\n"
+        "- Orientar retorno e sinais de alarme para reavaliação.\n\n"
+        "### Observações adicionais\n" + "\n".join(observations)
     )
 
 
-def _fallback_patient_report() -> str:
+def _fallback_patient_report(findings: list[Feedback]) -> str:
+    has_red_flag = any("red_flag" in item.tags for item in findings)
+    has_medication = any("medication" in item.tags for item in findings)
+    has_allergy = any("allergy" in item.tags for item in findings)
+    overview = (
+        "O médico avaliou os pontos que precisam de atenção."
+        if has_red_flag
+        else "O médico avaliou como você está se sentindo e o que precisa de atenção."
+    )
+    recommendations = ["Siga as orientações combinadas durante a consulta."]
+    if has_medication:
+        recommendations.append("Use as medicações exatamente como o médico orientou.")
+    if has_allergy:
+        recommendations.append("Informe suas alergias antes de iniciar qualquer remédio novo.")
+    recommendation_lines = "\n".join(f"- {message}" for message in recommendations)
     return (
         "### Resumo da consulta\n"
-        "Conversamos sobre como você está se sentindo e o que precisa de atenção.\n\n"
+        f"{overview}\n\n"
         "### Recomendações do médico\n"
-        "- Siga as orientações combinadas durante a consulta.\n\n"
+        f"{recommendation_lines}\n\n"
         "### Seus próximos passos\n"
         "1. Anote suas dúvidas para a próxima conversa.\n"
         "2. Procure o serviço de saúde se os sintomas piorarem.\n\n"

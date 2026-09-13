@@ -32,3 +32,16 @@ async def test_reports_do_not_echo_transcript() -> None:
     transcript = "conteudo sensivel do paciente"
     assert transcript not in await copilot.doctor_report(transcript)
     assert transcript not in await copilot.patient_report(transcript)
+
+
+async def test_rule_copilot_reports_use_detected_findings() -> None:
+    copilot = RuleCopilot()
+    transcript = "Paciente com dor no peito, usa medicamento contínuo e tem alergia a dipirona."
+    doctor = await copilot.doctor_report(transcript)
+    patient = await copilot.patient_report(transcript)
+    assert "Dor no peito" in doctor
+    assert "A definir pelo médico responsável" in doctor
+    assert "Use as medicações" in patient
+    assert "Informe suas alergias" in patient
+    assert transcript not in doctor
+    assert transcript not in patient
