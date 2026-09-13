@@ -66,6 +66,28 @@ services:
       - digitaly_egress
     logging: *default-logging
 
+  turn:
+    image: coturn/coturn:4.6.3
+    restart: unless-stopped
+    # Host networking: coturn must see real client addresses and advertise the
+    # VPS public IP when the host sits behind 1:1 NAT. UFW governs its ports.
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --realm=${DOMAIN:?DOMAIN is required}
+      - --server-name=${DOMAIN}
+      - --lt-cred-mech
+      - --user=${TURN_USERNAME:?TURN_USERNAME is required}:${TURN_CREDENTIAL:?TURN_CREDENTIAL is required}
+      - --fingerprint
+      - --no-cli
+      - --no-tls
+      - --no-dtls
+      - --min-port=49160
+      - --max-port=49200
+      - --external-ip=${PUBLIC_IP:?PUBLIC_IP is required}
+    logging: *default-logging
+
   web:
     build:
       context: .
@@ -181,6 +203,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      STT_MODEL: ${STT_MODEL:-whisper-1}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
       WHISPER_MODEL: ${WHISPER_MODEL:-base}
       WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
