@@ -126,7 +126,7 @@ export function ConsultationHistory() {
                     href={`/paciente/consultas/${item.consultationId}`}
                     className={buttonClasses({ variant: "secondary", size: "sm" })}
                   >
-                    Ver resumo
+                    {item.endedAt ? "Ver resumo" : "Acompanhar"}
                     <ExternalLink aria-hidden="true" />
                   </Link>
                 </article>

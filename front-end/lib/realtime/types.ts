@@ -7,6 +7,9 @@ import type {
 export type RealtimeEventPayload<K extends keyof ServerToClientEvents> =
   Parameters<ServerToClientEvents[K]>[0];
 
+export type ConsultationSummaryEvent =
+  RealtimeEventPayload<"consultation.summary">;
+
 export type RealtimeConnectionState =
   | "idle"
   | "connecting"

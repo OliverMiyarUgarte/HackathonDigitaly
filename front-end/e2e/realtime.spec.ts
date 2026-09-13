@@ -74,6 +74,7 @@ interface DoctorAppointmentResponse {
   appointmentId: string;
   status: string;
   consultationId: string | null;
+  patient: { id: string };
 }
 
 interface StartConsultationResponse {
@@ -84,6 +85,7 @@ interface StartConsultationResponse {
 async function resolveConsultation(
   page: Page,
   token: string,
+  patientId: string,
 ): Promise<{ consultationId: string; appointmentId: string; fresh: boolean }> {
   const headers = { Authorization: `Bearer ${token}` };
   const listResponse = await page.request.get(
@@ -93,8 +95,11 @@ async function resolveConsultation(
   expect(listResponse.ok()).toBeTruthy();
   const appointments =
     (await listResponse.json()) as DoctorAppointmentResponse[];
+  const paired = appointments.filter(
+    (appointment) => appointment.patient.id === patientId,
+  );
 
-  const confirmed = appointments.find(
+  const confirmed = paired.find(
     (appointment) =>
       appointment.status === "confirmed" && appointment.consultationId === null,
   );
@@ -114,7 +119,7 @@ async function resolveConsultation(
     }
   }
 
-  const active = appointments.find(
+  const active = paired.find(
     (appointment) =>
       appointment.status === "in_progress" && appointment.consultationId,
   );
@@ -126,7 +131,30 @@ async function resolveConsultation(
     };
   }
 
-  const existing = appointments.find(
+  for (const appointment of paired) {
+    if (!appointment.consultationId) {
+      continue;
+    }
+    const consultationResponse = await page.request.get(
+      `${API_BASE}/consultations/${appointment.consultationId}`,
+      { headers },
+    );
+    if (!consultationResponse.ok()) {
+      continue;
+    }
+    const consultation = (await consultationResponse.json()) as {
+      status: string;
+    };
+    if (consultation.status === "active") {
+      return {
+        consultationId: appointment.consultationId,
+        appointmentId: appointment.appointmentId,
+        fresh: false,
+      };
+    }
+  }
+
+  const existing = paired.find(
     (appointment) => appointment.consultationId !== null,
   );
   if (!existing || !existing.consultationId) {
@@ -175,13 +203,24 @@ test.describe("sala de teleconsulta", () => {
 
       await openRole(patientPage, "/paciente");
       const doctorToken = readTokens("doctor").accessToken;
+      const patientToken = readTokens("patient").accessToken;
+      const profileResponse = await patientPage.request.get(
+        `${API_BASE}/auth/me`,
+        { headers: { Authorization: `Bearer ${patientToken}` } },
+      );
+      expect(profileResponse.ok()).toBeTruthy();
+      const patientProfile = (await profileResponse.json()) as { id: string };
 
       const worklet = await doctorPage.request.get(
         "http://localhost:3000/worklets/pcm-capture-processor.js",
       );
       expect(worklet.ok()).toBeTruthy();
 
-      const consultation = await resolveConsultation(doctorPage, doctorToken);
+      const consultation = await resolveConsultation(
+        doctorPage,
+        doctorToken,
+        patientProfile.id,
+      );
       const roomPath = `/medico/consultas/${consultation.consultationId}`;
 
       if (consultation.fresh) {
@@ -226,6 +265,15 @@ test.describe("sala de teleconsulta", () => {
         .poll(() => remoteVideoTracks(patientPage), { timeout: 30000 })
         .toBeGreaterThan(0);
 
+      await expect(doctorPage.getByTestId("copilot-panel")).toBeVisible();
+      await doctorPage.getByTestId("toggle-copilot-audio").click();
+      await expect(doctorPage.getByTestId("copilot-panel")).toHaveAttribute(
+        "data-copilot-sources",
+        "2",
+        { timeout: 30000 },
+      );
+      await expect(patientPage.getByTestId("copilot-panel")).toHaveCount(0);
+
       const doctorTileOnPatient = patientPage.locator(
         '[data-testid="participant"][data-participant-role="doctor"]',
       );
@@ -242,9 +290,6 @@ test.describe("sala de teleconsulta", () => {
       await expect(doctorTileOnPatient).toHaveAttribute("data-camera", "false", {
         timeout: 30000,
       });
-
-      await expect(doctorPage.getByTestId("copilot-panel")).toBeVisible();
-      await expect(patientPage.getByTestId("copilot-panel")).toHaveCount(0);
 
       await doctorPage.getByTestId("toggle-mic").click();
       await expect(doctorTileOnPatient).toHaveAttribute("data-mic", "true", {

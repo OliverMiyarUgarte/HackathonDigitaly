@@ -58,6 +58,7 @@ export interface CopilotPanelProps {
   aiStatus: AiStatus;
   isStreaming: boolean;
   level: number;
+  sourceCount: number;
   audioError: string | null;
   onStartAudio: () => void;
   onStopAudio: () => void;
@@ -71,6 +72,7 @@ export function CopilotPanel({
   aiStatus,
   isStreaming,
   level,
+  sourceCount,
   audioError,
   onStartAudio,
   onStopAudio,
@@ -83,6 +85,7 @@ export function CopilotPanel({
   return (
     <section
       data-testid="copilot-panel"
+      data-copilot-sources={sourceCount}
       aria-label="Copiloto clínico"
       className="flex flex-col gap-4 rounded-lg border border-borda bg-bg-elev p-4"
     >

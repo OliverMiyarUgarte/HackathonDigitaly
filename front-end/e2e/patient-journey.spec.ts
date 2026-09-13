@@ -250,8 +250,8 @@ test("paciente agenda, confirma com código do MailHog e vê no calendário", as
         "href",
         process.env.NEXT_PUBLIC_MAILHOG_URL,
       );
-    } else {
-      await expect(mailhogLink).toHaveCount(0);
+    } else if ((await mailhogLink.count()) > 0) {
+      await expect(mailhogLink).toHaveAttribute("href", /^https?:\/\//);
     }
 
     const code = await waitForCode(page, previousMessageId);

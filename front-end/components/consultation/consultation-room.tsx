@@ -26,6 +26,7 @@ import { useConsultationRoom } from "@/lib/realtime/use-consultation-room";
 import { AttachmentPanel } from "./attachment-panel";
 import { CallControls } from "./call-controls";
 import { CopilotPanel } from "./copilot-panel";
+import { PostCallDoctorSummary } from "./post-call-doctor-summary";
 import { PostCallSummary } from "./post-call-summary";
 import { PreCallLobby } from "./pre-call-lobby";
 import { VideoStage } from "./video-stage";
@@ -101,6 +102,7 @@ export function ConsultationRoom({
   const audio = useAudioStream({
     consultationId,
     stream: room.localStream,
+    remoteStream: role === "doctor" ? room.remoteStream : null,
     enabled: role === "doctor",
   });
 
@@ -229,6 +231,15 @@ export function ConsultationRoom({
     );
   }
 
+  if (role === "doctor" && room.isEnded) {
+    return (
+      <PostCallDoctorSummary
+        consultationId={consultationId}
+        counterpartLabel={counterpartLabel}
+      />
+    );
+  }
+
   return (
     <div
       data-testid="consultation-room"
@@ -318,6 +329,7 @@ export function ConsultationRoom({
                 aiStatus={copilot.aiStatus}
                 isStreaming={audio.isStreaming}
                 level={audio.level}
+                sourceCount={audio.sourceCount}
                 audioError={audio.error}
                 onStartAudio={() => void audio.start()}
                 onStopAudio={audio.stop}

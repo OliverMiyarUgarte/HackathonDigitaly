@@ -17,6 +17,7 @@ const LEVEL_INTERVAL_MS = 100;
 export interface UseAudioStreamOptions {
   consultationId: string;
   stream: MediaStream | null;
+  remoteStream?: MediaStream | null;
   enabled?: boolean;
 }
 
@@ -25,23 +26,29 @@ export interface UseAudioStreamResult {
   stop: () => void;
   isStreaming: boolean;
   level: number;
+  sourceCount: number;
   error: string | null;
 }
 
 export function useAudioStream({
   consultationId,
   stream,
+  remoteStream = null,
   enabled = true,
 }: UseAudioStreamOptions): UseAudioStreamResult {
   const { socket } = useRealtime();
   const [isStreaming, setIsStreaming] = useState(false);
   const [level, setLevel] = useState(0);
+  const [sourceCount, setSourceCount] = useState(0);
+  const [remoteVersion, setRemoteVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const streamRef = useRef<MediaStream | null>(stream);
   const enabledRef = useRef(enabled);
   const contextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const remoteSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const mixerRef = useRef<GainNode | null>(null);
   const workletRef = useRef<AudioWorkletNode | null>(null);
   const batcherRef = useRef<PcmFrameBatcher | null>(null);
   const seqRef = useRef(0);
@@ -64,7 +71,24 @@ export function useAudioStream({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isStreaming || !remoteStream) {
+      return;
+    }
+    const bump = (): void => {
+      setRemoteVersion((current) => current + 1);
+    };
+    remoteStream.addEventListener("addtrack", bump);
+    remoteStream.addEventListener("removetrack", bump);
+    return () => {
+      remoteStream.removeEventListener("addtrack", bump);
+      remoteStream.removeEventListener("removetrack", bump);
+    };
+  }, [remoteStream, isStreaming]);
+
   const teardown = useCallback((): void => {
+    remoteSourceRef.current?.disconnect();
+    mixerRef.current?.disconnect();
     workletRef.current?.port.close();
     workletRef.current?.disconnect();
     sourceRef.current?.disconnect();
@@ -72,6 +96,8 @@ export function useAudioStream({
     if (context && context.state !== "closed") {
       void context.close();
     }
+    remoteSourceRef.current = null;
+    mixerRef.current = null;
     workletRef.current = null;
     sourceRef.current = null;
     contextRef.current = null;
@@ -97,6 +123,7 @@ export function useAudioStream({
     if (activeRef.current) {
       setIsStreaming(false);
       setLevel(0);
+      setSourceCount(0);
     }
   }, [consultationId, socket, teardown]);
 
@@ -132,6 +159,8 @@ export function useAudioStream({
       await context.audioWorklet.addModule(WORKLET_URL);
 
       const source = context.createMediaStreamSource(mediaStream);
+      const mixer = context.createGain();
+      mixer.gain.value = 1;
       const worklet = new AudioWorkletNode(context, WORKLET_NAME, {
         numberOfOutputs: 0,
       });
@@ -170,13 +199,16 @@ export function useAudioStream({
         }
       };
 
-      source.connect(worklet);
+      source.connect(mixer);
+      mixer.connect(worklet);
 
       contextRef.current = context;
       sourceRef.current = source;
+      mixerRef.current = mixer;
       workletRef.current = worklet;
       streamingRef.current = true;
       setIsStreaming(true);
+      setSourceCount(1);
     } catch (caught) {
       console.error(
         "pcm-capture-failed",
@@ -193,6 +225,35 @@ export function useAudioStream({
       }
     }
   }, [consultationId, socket, teardown]);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      return;
+    }
+    const context = contextRef.current;
+    const mixer = mixerRef.current;
+    if (!context || !mixer) {
+      return;
+    }
+    remoteSourceRef.current?.disconnect();
+    remoteSourceRef.current = null;
+    const hasRemoteAudio =
+      remoteStream !== null && remoteStream.getAudioTracks().length > 0;
+    const remoteSource = hasRemoteAudio
+      ? context.createMediaStreamSource(remoteStream)
+      : null;
+    if (remoteSource) {
+      remoteSource.connect(mixer);
+      remoteSourceRef.current = remoteSource;
+    }
+    setSourceCount((sourceRef.current ? 1 : 0) + (remoteSource ? 1 : 0));
+    return () => {
+      remoteSource?.disconnect();
+      if (remoteSourceRef.current === remoteSource) {
+        remoteSourceRef.current = null;
+      }
+    };
+  }, [remoteStream, remoteVersion, isStreaming]);
 
   useEffect(() => {
     return () => {
@@ -212,8 +273,9 @@ export function useAudioStream({
       teardown();
       setIsStreaming(false);
       setLevel(0);
+      setSourceCount(0);
     };
   }, [consultationId, socket, teardown]);
 
-  return { start, stop, isStreaming, level, error };
+  return { start, stop, isStreaming, level, sourceCount, error };
 }

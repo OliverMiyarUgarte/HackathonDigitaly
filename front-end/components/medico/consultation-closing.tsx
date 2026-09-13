@@ -45,6 +45,8 @@ import {
 import { formatDateTimeWithContext, formatDuration } from "@/lib/format";
 import { useAsyncWithKey, useToast } from "@/lib/hooks";
 import { consultationDurationSeconds } from "@/lib/medico";
+import { useConsultationSummary } from "@/lib/realtime/use-consultation-summary";
+import { ConsultationSummaryCard } from "@/components/consultation/consultation-summary";
 import { PreConsultList } from "./pre-consult-list";
 
 interface ClosingContext {
@@ -96,6 +98,7 @@ export function ConsultationClosing({
   );
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<MedicalRecordDto | null>(null);
+  const summaryState = useConsultationSummary(consultationId, true);
 
   const contextState = useAsyncWithKey(async (): Promise<ClosingContext> => {
     const consultation = await get(
@@ -340,6 +343,16 @@ export function ConsultationClosing({
       <PageHeader
         title="Fechamento do atendimento"
         description="Registre as notas, o diagnóstico e as prescrições da consulta."
+      />
+
+      <ConsultationSummaryCard
+        status={summaryState.status}
+        summary={summaryState.summary}
+        role="doctor"
+        onRetry={summaryState.refresh}
+        onUseAsRecordBase={() =>
+          setNotes(summaryState.summary?.doctorSummary ?? "")
+        }
       />
 
       <Card>

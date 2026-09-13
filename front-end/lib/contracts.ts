@@ -297,6 +297,17 @@ export const consultationHistoryItemSchema = z.object({
 });
 export type ConsultationHistoryItemDto = z.infer<typeof consultationHistoryItemSchema>;
 
+export const consultationSummarySchema = z.object({
+  consultationId: z.string(),
+  doctorSummary: z.string(),
+  patientSummary: z.string(),
+  generatedAt: z.string(),
+});
+export type ConsultationSummaryDto = z.infer<typeof consultationSummarySchema>;
+
+export const consultationSummaryEventSchema = consultationSummarySchema;
+export type ConsultationSummaryEventDto = z.infer<typeof consultationSummaryEventSchema>;
+
 export const createMedicalRecordRequestSchema = z.object({
   consultationId: z.string(),
   patientId: z.string(),
