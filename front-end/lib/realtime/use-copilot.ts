@@ -36,12 +36,17 @@ export function useCopilot(
       return;
     }
 
+    const markReady = (): void => {
+      setAiStatus((current) => (current === "ready" ? current : "ready"));
+    };
+
     const onPartial = (
       payload: RealtimeEventPayload<"transcript.partial">,
     ): void => {
       if (payload.consultationId !== consultationId) {
         return;
       }
+      markReady();
       setPartial(payload.text);
     };
 
@@ -55,6 +60,7 @@ export function useCopilot(
         return;
       }
       seenSegmentsRef.current.add(payload.segmentId);
+      markReady();
       setSegments((current) =>
         [
           ...current,
@@ -74,6 +80,7 @@ export function useCopilot(
       if (payload.consultationId !== consultationId) {
         return;
       }
+      markReady();
       setInsights((current) =>
         [
           ...current,
