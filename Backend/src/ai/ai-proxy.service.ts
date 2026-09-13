@@ -26,6 +26,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 const HTTP_TIMEOUT_MS = 2_000;
 const WS_TIMEOUT_MS = 2_000;
 const MAX_BUFFERED_FRAMES = 64;
+const OPEN_RETRY_COOLDOWN_MS = 5_000;
 const INTERNAL_TOKEN_HEADER = 'X-Internal-Token';
 const DEFAULT_HTTP_BASE_URL = 'http://localhost:8000';
 
@@ -162,6 +163,8 @@ export class AiProxyService
 {
   private readonly logger = new Logger(AiProxyService.name);
   private readonly sessions = new Map<string, AiSessionState>();
+  private readonly opening = new Set<string>();
+  private readonly openAttempts = new Map<string, number>();
 
   constructor(
     private readonly configService: ConfigService,
@@ -230,9 +233,22 @@ export class AiProxyService
 
   handleAudioChunk(user: AuthenticatedUser, frame: AudioChunkFrame): void {
     const state = this.getAuthorizedSession(user, frame.consultationId);
+    if (state) {
+      this.forwardChunk(state, frame);
+      return;
+    }
+    void this.ensureSessionAndForward(user, frame);
+  }
+
+  handleAudioEnd(user: AuthenticatedUser, frame: AudioEndFrame): void {
+    const state = this.getAuthorizedSession(user, frame.consultationId);
     if (!state) {
       return;
     }
+    this.sendFrame(state, { type: 'audio.end', seq: frame.seq });
+  }
+
+  private forwardChunk(state: AiSessionState, frame: AudioChunkFrame): void {
     this.sendFrame(state, {
       type: 'audio.chunk',
       seq: frame.seq,
@@ -243,12 +259,53 @@ export class AiProxyService
     });
   }
 
-  handleAudioEnd(user: AuthenticatedUser, frame: AudioEndFrame): void {
-    const state = this.getAuthorizedSession(user, frame.consultationId);
-    if (!state) {
+  private async ensureSessionAndForward(
+    user: AuthenticatedUser,
+    frame: AudioChunkFrame,
+  ): Promise<void> {
+    if (user.role !== 'doctor') {
       return;
     }
-    this.sendFrame(state, { type: 'audio.end', seq: frame.seq });
+    const consultationId = frame.consultationId;
+    if (this.opening.has(consultationId)) {
+      return;
+    }
+    const lastAttempt = this.openAttempts.get(consultationId) ?? 0;
+    if (Date.now() - lastAttempt < OPEN_RETRY_COOLDOWN_MS) {
+      return;
+    }
+    this.opening.add(consultationId);
+    this.openAttempts.set(consultationId, Date.now());
+    try {
+      const consultation = await this.prisma.consultation.findUnique({
+        where: { id: consultationId },
+        select: {
+          status: true,
+          appointmentId: true,
+          appointment: { select: { doctorId: true } },
+        },
+      });
+      if (!consultation || consultation.status !== 'active') {
+        return;
+      }
+      const doctorId = consultation.appointment?.doctorId;
+      if (!doctorId || doctorId !== user.sub) {
+        return;
+      }
+      await this.openSession({
+        consultationId,
+        appointmentId: consultation.appointmentId,
+        doctorId,
+      });
+      const state = this.getAuthorizedSession(user, frame.consultationId);
+      if (state) {
+        this.forwardChunk(state, frame);
+      }
+    } catch {
+      this.logger.warn('AI session reopen failed');
+    } finally {
+      this.opening.delete(consultationId);
+    }
   }
 
   private getAuthorizedSession(

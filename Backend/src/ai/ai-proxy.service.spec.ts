@@ -73,7 +73,10 @@ describe('AiProxyService', () => {
     setAudioFrameHandler: jest.Mock;
     emitToUser: jest.Mock;
   };
-  let prisma: { appointment: { findUnique: jest.Mock } };
+  let prisma: {
+    appointment: { findUnique: jest.Mock };
+    consultation: { findUnique: jest.Mock };
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -83,7 +86,10 @@ describe('AiProxyService', () => {
       setAudioFrameHandler: jest.fn(),
       emitToUser: jest.fn(),
     };
-    prisma = { appointment: { findUnique: jest.fn() } };
+    prisma = {
+      appointment: { findUnique: jest.fn() },
+      consultation: { findUnique: jest.fn() },
+    };
 
     const config = {
       get: jest.fn((key: string): string | undefined => {
@@ -138,6 +144,38 @@ describe('AiProxyService', () => {
 
   it('registers itself as the realtime audio frame handler', () => {
     expect(realtime.setAudioFrameHandler).toHaveBeenCalledWith(service);
+  });
+
+  it('reopens the AI session lazily when a doctor chunk arrives without one', async () => {
+    prisma.consultation.findUnique.mockResolvedValue({
+      status: 'active',
+      appointmentId: 'appointment-1',
+      appointment: { doctorId: DOCTOR_ID },
+    });
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: (): Promise<unknown> =>
+        Promise.resolve({
+          sessionId: 'session-lazy',
+          expiresAt: '2030-01-01T00:00:00.000Z',
+        }),
+    });
+
+    service.handleAudioChunk({ sub: DOCTOR_ID, role: 'doctor' }, CHUNK);
+    await flushPromises();
+    await flushPromises();
+
+    const socket = wsInstances()[0];
+    expect(socket).toBeDefined();
+    socket.emit('open');
+    await flushPromises();
+    await flushPromises();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/sessions'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(socket.send).toHaveBeenCalled();
   });
 
   it('emits unavailable and resolves when session creation fails', async () => {
