@@ -15,13 +15,18 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error("Falha inesperada");
 }
 
-export function useAsync<T>(fn: () => Promise<T>, initialData: T | null = null) {
+export function useAsyncWithKey<T>(
+  fn: () => Promise<T>,
+  key: string,
+  initialData: T | null = null,
+) {
   const fnRef = useRef(fn);
   const [state, setState] = useState<AsyncState<T>>({
     data: initialData,
     loading: true,
     error: null,
   });
+  const [resolvedKey, setResolvedKey] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -35,24 +40,35 @@ export function useAsync<T>(fn: () => Promise<T>, initialData: T | null = null) 
       .then((data) => {
         if (active) {
           setState({ data, loading: false, error: null });
+          setResolvedKey(key);
         }
       })
       .catch((error: unknown) => {
         if (active) {
           setState({ data: null, loading: false, error: toError(error) });
+          setResolvedKey(key);
         }
       });
     return () => {
       active = false;
     };
-  }, [version]);
+  }, [version, key]);
 
   const reload = useCallback(() => {
     setState((previous) => ({ ...previous, loading: true, error: null }));
     setVersion((current) => current + 1);
   }, []);
 
-  return { ...state, reload };
+  return {
+    data: state.data,
+    error: state.error,
+    loading: state.loading || resolvedKey !== key,
+    reload,
+  };
+}
+
+export function useAsync<T>(fn: () => Promise<T>, initialData: T | null = null) {
+  return useAsyncWithKey(fn, "", initialData);
 }
 
 export function useMediaQuery(query: string): boolean {

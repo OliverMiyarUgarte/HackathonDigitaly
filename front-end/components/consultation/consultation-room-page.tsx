@@ -7,6 +7,7 @@ import { consultationSchema } from "@/lib/contracts";
 import { get } from "@/lib/api";
 import { useAsync } from "@/lib/hooks";
 import { ConsultationRoom } from "./consultation-room";
+import { PostCallSummary } from "./post-call-summary";
 
 export interface ConsultationRoomPageProps {
   consultationId: string;
@@ -32,6 +33,15 @@ export function ConsultationRoomPage({
         Não foi possível localizar esta consulta. Volte à página inicial e
         tente novamente.
       </Alert>
+    );
+  }
+
+  if (role === "patient" && state.data.status === "ended") {
+    return (
+      <PostCallSummary
+        consultationId={consultationId}
+        endedAt={state.data.endedAt}
+      />
     );
   }
 

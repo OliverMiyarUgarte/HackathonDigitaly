@@ -1,5 +1,12 @@
 import type { ComponentType } from "react";
-import { CalendarDays, ClipboardList, Home, Users } from "lucide-react";
+import {
+  CalendarDays,
+  CalendarPlus,
+  ClipboardList,
+  FileHeart,
+  Home,
+  Users,
+} from "lucide-react";
 import type { UserRole } from "@/lib/contracts";
 
 export interface NavItem {
@@ -11,8 +18,10 @@ export interface NavItem {
 export const NAV_ITEMS: Record<UserRole, readonly NavItem[]> = {
   patient: [
     { label: "Início", href: "/paciente", icon: Home },
-    { label: "Consultas", href: "/paciente/consultas", icon: ClipboardList },
+    { label: "Agendar", href: "/paciente/agendar", icon: CalendarPlus },
     { label: "Calendário", href: "/paciente/calendario", icon: CalendarDays },
+    { label: "Histórico", href: "/paciente/historico", icon: ClipboardList },
+    { label: "Prontuário", href: "/paciente/prontuario", icon: FileHeart },
   ],
   doctor: [
     { label: "Início", href: "/medico", icon: Home },

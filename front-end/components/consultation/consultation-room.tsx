@@ -7,13 +7,6 @@ import type { UserRole } from "@telemed/service-contracts";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { get, post } from "@/lib/api";
@@ -33,6 +26,8 @@ import { useConsultationRoom } from "@/lib/realtime/use-consultation-room";
 import { AttachmentPanel } from "./attachment-panel";
 import { CallControls } from "./call-controls";
 import { CopilotPanel } from "./copilot-panel";
+import { PostCallSummary } from "./post-call-summary";
+import { PreCallLobby } from "./pre-call-lobby";
 import { VideoStage } from "./video-stage";
 
 const attachmentListSchema = z.array(attachmentSchema);
@@ -198,6 +193,16 @@ export function ConsultationRoom({
     );
   }
 
+  if (role === "patient" && room.isEnded) {
+    return (
+      <PostCallSummary
+        consultationId={consultationId}
+        endedAt={roomData.data.consultation.endedAt}
+        counterpartLabel={counterpartLabel}
+      />
+    );
+  }
+
   return (
     <div
       data-testid="consultation-room"
@@ -223,46 +228,20 @@ export function ConsultationRoom({
       </header>
 
       {!room.hasStarted ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Entrar no atendimento</CardTitle>
-            <CardDescription>
-              Ao entrar, o navegador pedirá acesso à câmera e ao microfone. A
-              permissão é solicitada apenas quando você clicar no botão.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Alert variant="info" title="Privacidade do atendimento">
-              O áudio e o vídeo são transmitidos apenas entre os participantes
-              desta consulta. A captura para o copiloto só é ativada pelo
-              médico.
-            </Alert>
-            {room.error ? (
-              <Alert variant="error" title="Não foi possível entrar">
-                <div className="flex flex-col items-start gap-3">
-                  <span>{room.error}</span>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => void room.retry()}
-                  >
-                    Tentar novamente
-                  </Button>
-                </div>
-              </Alert>
-            ) : null}
-            <div>
-              <Button
-                size="lg"
-                onClick={() => void room.start()}
-                disabled={room.isStarting}
-                data-testid="enter-room"
-              >
-                {room.isStarting ? "Conectando..." : "Entrar no atendimento"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <PreCallLobby
+          counterpartLabel={counterpartLabel}
+          scheduledAt={roomData.data.appointment.scheduledAt}
+          localStream={room.localStream}
+          micOn={room.micOn}
+          cameraOn={room.cameraOn}
+          isPreparing={room.isPreparing}
+          isStarting={room.isStarting}
+          error={room.error}
+          onPrepare={() => void room.prepare()}
+          onEnter={() => void room.start()}
+          onToggleMic={room.toggleMic}
+          onToggleCamera={room.toggleCamera}
+        />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
           <div className="flex flex-col gap-4">

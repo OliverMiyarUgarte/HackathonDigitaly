@@ -120,6 +120,18 @@ async function resolveConsultation(
     }
   }
 
+  const active = appointments.find(
+    (appointment) =>
+      appointment.status === "in_progress" && appointment.consultationId,
+  );
+  if (active?.consultationId) {
+    return {
+      consultationId: active.consultationId,
+      appointmentId: active.appointmentId,
+      fresh: false,
+    };
+  }
+
   const existing = appointments.find(
     (appointment) => appointment.consultationId !== null,
   );

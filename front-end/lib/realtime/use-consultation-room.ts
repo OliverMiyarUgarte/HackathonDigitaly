@@ -37,6 +37,7 @@ export interface UseConsultationRoomOptions {
 export interface UseConsultationRoomResult {
   start: () => Promise<void>;
   retry: () => Promise<void>;
+  prepare: () => Promise<void>;
   stop: () => void;
   toggleMic: () => void;
   toggleCamera: () => void;
@@ -46,6 +47,8 @@ export interface UseConsultationRoomResult {
   cameraOn: boolean;
   hasStarted: boolean;
   isStarting: boolean;
+  isPreparing: boolean;
+  isEnded: boolean;
   connectionState: RealtimeConnectionState;
   participants: RoomParticipant[];
   error: string | null;
@@ -118,6 +121,8 @@ export function useConsultationRoom({
   const [cameraOn, setCameraOn] = useState(true);
   const [hasStarted, setHasStarted] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
+  const [isEnded, setIsEnded] = useState(false);
   const [pcConnectionState, setPcConnectionState] =
     useState<RTCPeerConnectionState>("new");
   const [error, setError] = useState<string | null>(null);
@@ -432,6 +437,15 @@ export function useConsultationRoom({
       syncParticipants();
     };
 
+    const onConsultationEnded = (
+      payload: RealtimeEventPayload<"consultation.ended">,
+    ): void => {
+      if (payload.appointmentId !== appointmentId) {
+        return;
+      }
+      setIsEnded(true);
+    };
+
     const onSocketConnect = (): void => {
       if (startedRef.current) {
         socket.emit("room.join", { appointmentId });
@@ -446,6 +460,7 @@ export function useConsultationRoom({
     socket.on("media.state", onMediaState);
     socket.on("participant.joined", onParticipantJoined);
     socket.on("participant.left", onParticipantLeft);
+    socket.on("consultation.ended", onConsultationEnded);
     socket.on("connect", onSocketConnect);
 
     return () => {
@@ -457,6 +472,7 @@ export function useConsultationRoom({
       socket.off("media.state", onMediaState);
       socket.off("participant.joined", onParticipantJoined);
       socket.off("participant.left", onParticipantLeft);
+      socket.off("consultation.ended", onConsultationEnded);
       socket.off("connect", onSocketConnect);
     };
   }, [
@@ -469,6 +485,49 @@ export function useConsultationRoom({
     syncParticipants,
   ]);
 
+  const acquireLocalStream = useCallback(async (): Promise<MediaStream> => {
+    const existing = localStreamRef.current;
+    if (existing) {
+      return existing;
+    }
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== "function"
+    ) {
+      throw new Error("MEDIA_UNSUPPORTED");
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: true,
+    });
+    localStreamRef.current = stream;
+    const audioEnabled = stream
+      .getAudioTracks()
+      .every((track) => track.enabled);
+    const videoEnabled = stream
+      .getVideoTracks()
+      .every((track) => track.enabled);
+    micRef.current = audioEnabled;
+    cameraRef.current = videoEnabled;
+    setMicOn(audioEnabled);
+    setCameraOn(videoEnabled);
+    setLocalStream(stream);
+    return stream;
+  }, []);
+
+  const prepare = useCallback(async (): Promise<void> => {
+    setError(null);
+    setIsPreparing(true);
+    try {
+      await acquireLocalStream();
+    } catch (caught) {
+      setError(mediaErrorMessage(caught));
+    } finally {
+      setIsPreparing(false);
+    }
+  }, [acquireLocalStream]);
+
   const start = useCallback(async (): Promise<void> => {
     if (startedRef.current || isStarting) {
       return;
@@ -476,29 +535,7 @@ export function useConsultationRoom({
     setError(null);
     setIsStarting(true);
     try {
-      if (
-        typeof navigator === "undefined" ||
-        !navigator.mediaDevices ||
-        typeof navigator.mediaDevices.getUserMedia !== "function"
-      ) {
-        throw new Error("MEDIA_UNSUPPORTED");
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: true,
-      });
-      localStreamRef.current = stream;
-      const audioEnabled = stream
-        .getAudioTracks()
-        .every((track) => track.enabled);
-      const videoEnabled = stream
-        .getVideoTracks()
-        .every((track) => track.enabled);
-      micRef.current = audioEnabled;
-      cameraRef.current = videoEnabled;
-      setMicOn(audioEnabled);
-      setCameraOn(videoEnabled);
-      setLocalStream(stream);
+      await acquireLocalStream();
 
       if (!socket) {
         throw new Error("SOCKET_UNAVAILABLE");
@@ -518,7 +555,7 @@ export function useConsultationRoom({
     } finally {
       setIsStarting(false);
     }
-  }, [appointmentId, isStarting, socket]);
+  }, [acquireLocalStream, appointmentId, isStarting, socket]);
 
   const stop = useCallback((): void => {
     const stream = localStreamRef.current;
@@ -629,6 +666,7 @@ export function useConsultationRoom({
   return {
     start,
     retry: start,
+    prepare,
     stop,
     toggleMic,
     toggleCamera,
@@ -638,6 +676,8 @@ export function useConsultationRoom({
     cameraOn,
     hasStarted,
     isStarting,
+    isPreparing,
+    isEnded,
     connectionState,
     participants,
     error,
