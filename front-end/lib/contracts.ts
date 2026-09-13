@@ -359,3 +359,8 @@ export const attachmentSchema = z.object({
   createdAt: z.string(),
 });
 export type AttachmentDto = z.infer<typeof attachmentSchema>;
+
+export const doctorAppointmentListSchema = z.array(doctorAppointmentSchema);
+export const preConsultAnswerListSchema = z.array(preConsultAnswerSchema);
+export const consultationHistoryListSchema = z.array(consultationHistoryItemSchema);
+export const medicalRecordSummaryListSchema = z.array(medicalRecordSummarySchema);

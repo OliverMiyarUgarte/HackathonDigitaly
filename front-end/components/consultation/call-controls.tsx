@@ -18,6 +18,7 @@ export interface CallControlsProps {
   attachmentsOpen: boolean;
   isFullscreen: boolean;
   ending: boolean;
+  endLabel?: string;
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onToggleAttachments: () => void;
@@ -31,6 +32,7 @@ export function CallControls({
   attachmentsOpen,
   isFullscreen,
   ending,
+  endLabel = "Encerrar atendimento",
   onToggleMic,
   onToggleCamera,
   onToggleAttachments,
@@ -111,7 +113,7 @@ export function CallControls({
         disabled={ending}
       >
         <PhoneOff aria-hidden="true" />
-        {ending ? "Encerrando..." : "Encerrar atendimento"}
+        {ending ? "Encerrando..." : endLabel}
       </Button>
     </div>
   );

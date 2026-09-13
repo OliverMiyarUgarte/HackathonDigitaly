@@ -107,6 +107,7 @@ export function CopilotPanel({
             variant={isStreaming ? "secondary" : "primary"}
             onClick={isStreaming ? onStopAudio : onStartAudio}
             data-testid="toggle-copilot-audio"
+            data-streaming={isStreaming ? "true" : "false"}
           >
             <AudioLines aria-hidden="true" />
             {isStreaming ? "Pausar escuta" : "Ativar escuta"}

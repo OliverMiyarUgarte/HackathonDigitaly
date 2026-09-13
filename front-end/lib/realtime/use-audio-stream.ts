@@ -17,6 +17,7 @@ const LEVEL_INTERVAL_MS = 100;
 export interface UseAudioStreamOptions {
   consultationId: string;
   stream: MediaStream | null;
+  enabled?: boolean;
 }
 
 export interface UseAudioStreamResult {
@@ -30,6 +31,7 @@ export interface UseAudioStreamResult {
 export function useAudioStream({
   consultationId,
   stream,
+  enabled = true,
 }: UseAudioStreamOptions): UseAudioStreamResult {
   const { socket } = useRealtime();
   const [isStreaming, setIsStreaming] = useState(false);
@@ -37,6 +39,7 @@ export function useAudioStream({
   const [error, setError] = useState<string | null>(null);
 
   const streamRef = useRef<MediaStream | null>(stream);
+  const enabledRef = useRef(enabled);
   const contextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const workletRef = useRef<AudioWorkletNode | null>(null);
@@ -49,6 +52,10 @@ export function useAudioStream({
   useEffect(() => {
     streamRef.current = stream;
   }, [stream]);
+
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
 
   useEffect(() => {
     activeRef.current = true;
@@ -94,7 +101,7 @@ export function useAudioStream({
   }, [consultationId, socket, teardown]);
 
   const start = useCallback(async (): Promise<void> => {
-    if (streamingRef.current) {
+    if (streamingRef.current || !enabledRef.current) {
       return;
     }
     activeRef.current = true;

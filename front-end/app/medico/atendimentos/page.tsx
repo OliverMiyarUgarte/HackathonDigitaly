@@ -1,10 +1,5 @@
-import { PlaceholderPage } from "@/components/shell/placeholder-page";
+import { DoctorAgenda } from "@/components/medico/doctor-agenda";
 
 export default function MedicoAtendimentosPage() {
-  return (
-    <PlaceholderPage
-      title="Atendimentos"
-      description="Fila do dia, triagem respondida e início da teleconsulta."
-    />
-  );
+  return <DoctorAgenda />;
 }

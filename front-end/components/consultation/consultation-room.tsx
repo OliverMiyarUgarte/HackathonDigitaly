@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { get, post } from "@/lib/api";
+import { ApiError, get, post } from "@/lib/api";
 import { useSession } from "@/lib/auth";
 import {
   appointmentSchema,
@@ -19,7 +19,7 @@ import {
   endConsultationResponseSchema,
   userDtoSchema,
 } from "@/lib/contracts";
-import { useAsync } from "@/lib/hooks";
+import { useAsync, useToast } from "@/lib/hooks";
 import { useCopilot } from "@/lib/realtime/use-copilot";
 import { useAudioStream } from "@/lib/realtime/use-audio-stream";
 import { useConsultationRoom } from "@/lib/realtime/use-consultation-room";
@@ -46,6 +46,7 @@ export function ConsultationRoom({
 }: ConsultationRoomProps) {
   const router = useRouter();
   const { user } = useSession();
+  const { toast } = useToast();
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [ending, setEnding] = useState(false);
@@ -100,6 +101,7 @@ export function ConsultationRoom({
   const audio = useAudioStream({
     consultationId,
     stream: room.localStream,
+    enabled: role === "doctor",
   });
 
   useEffect(() => {
@@ -137,22 +139,46 @@ export function ConsultationRoom({
   }, []);
 
   const handleEnd = useCallback(async (): Promise<void> => {
-    setConfirmOpen(false);
-    room.stop();
-    if (role === "doctor") {
-      setEnding(true);
-      try {
-        await post(
-          `/consultations/${consultationId}/end`,
-          undefined,
-          endConsultationResponseSchema,
-        );
-      } catch {
-        setEnding(false);
-      }
+    if (role !== "doctor") {
+      setConfirmOpen(false);
+      room.stop();
+      router.push("/paciente");
+      return;
     }
-    router.push(role === "doctor" ? "/medico" : "/paciente");
-  }, [consultationId, role, room, router]);
+
+    setEnding(true);
+    try {
+      await post(
+        `/consultations/${consultationId}/end`,
+        undefined,
+        endConsultationResponseSchema,
+      );
+      room.stop();
+      setConfirmOpen(false);
+      toast({
+        variant: "success",
+        title: "Atendimento encerrado",
+        description: "Continue para registrar o prontuário da consulta.",
+      });
+      router.push(`/medico/consultas/${consultationId}/fechamento`);
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.code === "CONSULTATION_NOT_ACTIVE"
+      ) {
+        room.stop();
+        setConfirmOpen(false);
+        router.push(`/medico/consultas/${consultationId}/fechamento`);
+        return;
+      }
+      setEnding(false);
+      toast({
+        variant: "error",
+        title: "Não foi possível encerrar o atendimento",
+        description: "Verifique a conexão e tente novamente.",
+      });
+    }
+  }, [consultationId, role, room, router, toast]);
 
   const names = useMemo<Record<string, string>>(() => {
     const map: Record<string, string> = {};
@@ -274,6 +300,11 @@ export function ConsultationRoom({
               attachmentsOpen={attachmentsOpen}
               isFullscreen={isFullscreen}
               ending={ending}
+              endLabel={
+                role === "doctor"
+                  ? "Encerrar consulta"
+                  : "Encerrar atendimento"
+              }
               onToggleMic={room.toggleMic}
               onToggleCamera={room.toggleCamera}
               onToggleAttachments={() => setAttachmentsOpen((open) => !open)}
@@ -314,7 +345,7 @@ export function ConsultationRoom({
       <Dialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Encerrar atendimento"
+        title={role === "doctor" ? "Encerrar consulta" : "Encerrar atendimento"}
         description="O atendimento será finalizado para todos os participantes."
         footer={
           <>

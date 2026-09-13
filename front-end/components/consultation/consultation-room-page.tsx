@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import type { UserRole } from "@telemed/service-contracts";
 import { Alert } from "@/components/ui/alert";
+import { buttonClasses } from "@/components/ui/button";
 import { SessionLoading } from "@/lib/auth";
 import { consultationSchema } from "@/lib/contracts";
 import { get } from "@/lib/api";
@@ -42,6 +44,25 @@ export function ConsultationRoomPage({
         consultationId={consultationId}
         endedAt={state.data.endedAt}
       />
+    );
+  }
+
+  if (role === "doctor" && state.data.status === "ended") {
+    return (
+      <Alert variant="info" title="Atendimento encerrado">
+        <div className="flex flex-col items-start gap-3">
+          <span>
+            Este atendimento foi finalizado. Continue para registrar o
+            prontuário da consulta.
+          </span>
+          <Link
+            href={`/medico/consultas/${consultationId}/fechamento`}
+            className={buttonClasses({ variant: "primary" })}
+          >
+            Registrar prontuário
+          </Link>
+        </div>
+      </Alert>
     );
   }
 
