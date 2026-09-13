@@ -28,6 +28,17 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --env-file .env
 
 The default `AI_PROVIDER=fake` runs fully offline with `FakeTranscriber` + `RuleCopilot`.
 
+For real local speech-to-text, install the optional Whisper backend. It is kept
+out of the default image, so add it only where STT is needed:
+
+```bash
+pip install -r requirements-whisper.txt   # or: pip install ".[local]"
+```
+
+`AI_PROVIDER=local` uses `WhisperTranscriber` (`faster-whisper` preferred, then
+`openai-whisper`). Without an installed engine the service logs a clear warning at
+startup, falls back to `FakeTranscriber`, and `/health` reports `fake+rule`.
+
 Stream a WAV file through the contract with the dev client:
 
 ```bash
@@ -43,7 +54,7 @@ the pipeline never depends on a concrete provider.
 | `AI_PROVIDER` | Transcription | Copilot | External calls |
 | --- | --- | --- | --- |
 | `fake` | `FakeTranscriber` | `RuleCopilot` | none |
-| `local` | `WhisperTranscriber` (`faster-whisper` then `openai-whisper`), `FakeTranscriber` if no model | `RuleCopilot` | none |
+| `local` | `WhisperTranscriber` (`faster-whisper` then `openai-whisper`); `FakeTranscriber` with health `fake+rule` if no engine | `RuleCopilot` | none |
 | `openai` | `WhisperTranscriber` when a model is installed | `LlmCopilot` when `OPENAI_API_KEY` is set, else `RuleCopilot` | OpenAI chat completions |
 
 `WhisperTranscriber` transcribes the in-memory `numpy` buffer directly, so no
@@ -75,12 +86,15 @@ No secret is hardcoded. `.env` is ignored by git and Docker.
 4. On `audio.end`, the buffer is transcribed once more as `transcript.final`,
    then `RuleCopilot`/`LlmCopilot` emits `copilot.feedback` items with severity
    and tags (`red_flag`, `chest_pain`, `dyspnea`, `medication`, `allergy`).
+   `audio.end` only finalizes the current buffer; it keeps the session open, so a
+   later `audio.chunk` with a higher `seq` resumes streaming without a new session.
 5. `session.close` (or the idle sweeper) tears the session down. Provider errors
    are translated to `error` frames and the socket stays open when possible.
 
 Late or duplicate `seq` values are dropped. Buffer overflow drops the oldest
-bytes and emits `error` with code `BUFFER_TRUNCATED`. Unsupported audio geometry
-emits `UNSUPPORTED_AUDIO`; malformed frames emit `VALIDATION_FAILED`. The buffer
+bytes and emits `error` with code `BUFFER_TRUNCATED`. Unsupported `sampleRate` or
+a non-mono `channels` value is rejected (`UNSUPPORTED_AUDIO` or
+`VALIDATION_FAILED`); malformed frames emit `VALIDATION_FAILED`. The buffer
 is capped at `MAX_BUFFER_BYTES`.
 
 ## Contracts
@@ -88,13 +102,13 @@ is capped at `MAX_BUFFER_BYTES`.
 `app/models.py` mirrors `service-contracts/python/contracts.py` and
 `service-contracts/events/ai-events.ts`. The service is self-contained for the
 Docker build, and `tests/test_contracts.py` loads the shared `contracts.py` and
-asserts field-name, required-field, enum and frame-variant parity, so drift
-fails the test suite. NestJS calls exactly the endpoints listed above.
+asserts field-name, required-field, field-annotation, enum and frame-variant
+parity, so dtype drift fails the test suite. NestJS calls exactly the endpoints
+listed above.
 
-`AiAudioChunkFrame.channels` is typed as `int` rather than the contract literal
-`1` so the pipeline can reject `channels != 1` with a specific
-`UNSUPPORTED_AUDIO` error instead of a generic validation failure. All other
-frame fields match the contract exactly.
+`AiAudioChunkFrame.channels` is the contract literal `1` (`Literal[1]`), so a
+non-mono frame is rejected by validation as `VALIDATION_FAILED`. All other frame
+fields match the contract exactly.
 
 ## Tests
 

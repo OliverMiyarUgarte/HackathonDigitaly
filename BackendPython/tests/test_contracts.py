@@ -3,10 +3,11 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
-from types import ModuleType
-from typing import get_args
+from types import ModuleType, UnionType
+from typing import Literal, Union, get_args, get_origin
 
 import pytest
+from pydantic import BaseModel
 
 from app import models
 
@@ -72,6 +73,64 @@ def test_feedback_severity_values_match() -> None:
     local = get_args(models.AiCopilotFeedbackFrame.model_fields["severity"].annotation)
     remote = get_args(shared.AiCopilotFeedbackFrame.model_fields["severity"].annotation)
     assert set(local) == set(remote)
+
+
+CRITICAL_FIELD_ANNOTATIONS = {
+    "AiAudioChunkFrame": ("type", "encoding", "sampleRate", "channels"),
+    "AiCopilotFeedbackFrame": ("type", "severity"),
+    "AiTranscriptPartialFrame": ("type",),
+    "AiTranscriptFinalFrame": ("type",),
+    "AiAudioEndFrame": ("type",),
+    "AiSessionCloseFrame": ("type",),
+    "AiErrorFrame": ("type",),
+}
+
+
+def _normalize_annotation(annotation: object) -> object:
+    origin = get_origin(annotation)
+    if origin is None:
+        return type(None) if annotation is None else annotation
+    if origin is Union or origin is UnionType:
+        normalized_origin: object = Union
+    else:
+        normalized_origin = origin
+    return (normalized_origin, tuple(_normalize_annotation(arg) for arg in get_args(annotation)))
+
+
+def _field_annotation(model: type[BaseModel], field: str) -> object:
+    return model.model_fields[field].annotation
+
+
+def test_field_annotations_match_shared_contract() -> None:
+    assert shared is not None
+    for name in MODEL_NAMES:
+        local = getattr(models, name)
+        remote = getattr(shared, name)
+        for field in local.model_fields:
+            assert _normalize_annotation(_field_annotation(local, field)) == _normalize_annotation(
+                _field_annotation(remote, field)
+            ), f"{name}.{field}"
+
+
+def test_critical_field_annotations_match_shared_contract() -> None:
+    assert shared is not None
+    for name, fields in CRITICAL_FIELD_ANNOTATIONS.items():
+        local = getattr(models, name)
+        remote = getattr(shared, name)
+        for field in fields:
+            assert _normalize_annotation(_field_annotation(local, field)) == _normalize_annotation(
+                _field_annotation(remote, field)
+            ), f"{name}.{field}"
+
+
+def test_audio_chunk_channels_is_mono_literal() -> None:
+    assert shared is not None
+    local = models.AiAudioChunkFrame.model_fields["channels"].annotation
+    remote = shared.AiAudioChunkFrame.model_fields["channels"].annotation
+    assert get_origin(local) is Literal
+    assert get_origin(remote) is Literal
+    assert get_args(local) == (1,)
+    assert get_args(remote) == (1,)
 
 
 def _frame_type_values(annotated: object) -> set[str]:

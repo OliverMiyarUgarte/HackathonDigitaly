@@ -73,10 +73,7 @@ async def _handle_chunk(
     settings: Settings,
     transcriber: Transcriber,
 ) -> None:
-    if (
-        frame.sampleRate != settings.target_sample_rate
-        or frame.channels != settings.target_channels
-    ):
+    if frame.sampleRate != settings.target_sample_rate:
         await _send_error(session, "UNSUPPORTED_AUDIO", "Esperado pcm_s16le 16000 Hz mono.")
         return
     if frame.seq <= session.last_seq:

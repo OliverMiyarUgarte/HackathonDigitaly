@@ -31,6 +31,19 @@ def collect_until_terminal(
     return frames
 
 
+def collect_finals(ws: Any, count: int, limit: int = 80) -> list[dict[str, Any]]:
+    frames: list[dict[str, Any]] = []
+    seen = 0
+    for _ in range(limit):
+        frame = ws.receive_json()
+        frames.append(frame)
+        if frame["type"] == "transcript.final":
+            seen += 1
+            if seen >= count:
+                break
+    return frames
+
+
 def test_full_fake_run_produces_all_frames(client_factory) -> None:
     client: TestClient = client_factory()
     session_id = create_session(client)
@@ -59,6 +72,28 @@ def test_full_fake_run_produces_all_frames(client_factory) -> None:
     assert "chest_pain" in tags
     assert "dyspnea" in tags
     assert any(frame["severity"] == "critical" for frame in feedback)
+
+
+def test_audio_end_resumes_without_new_session(client_factory) -> None:
+    client: TestClient = client_factory()
+    session_id = create_session(client)
+    with client.websocket_connect(f"/sessions/{session_id}/audio", headers=TEST_HEADERS) as ws:
+        ws.send_json(audio_chunk(0))
+        ws.send_json(audio_chunk(1))
+        ws.send_json({"type": "audio.end", "seq": 2})
+        first = collect_finals(ws, 1)
+        assert client.app.state.sessions.get(session_id) is not None
+
+        ws.send_json(audio_chunk(3))
+        ws.send_json({"type": "audio.end", "seq": 4})
+        second = collect_finals(ws, 1)
+
+    frames = first + second
+    finals = [frame for frame in frames if frame["type"] == "transcript.final"]
+    assert len(finals) == 2
+    assert all(frame["text"] for frame in finals)
+    assert finals[0]["segmentId"] != finals[1]["segmentId"]
+    assert wait_until(lambda: client.app.state.sessions.get(session_id) is None)
 
 
 def test_late_chunks_are_ignored(client_factory) -> None:
@@ -111,6 +146,20 @@ def test_unsupported_sample_rate_returns_error(client_factory) -> None:
         error = ws.receive_json()
         assert error["type"] == "error"
         assert error["code"] == "UNSUPPORTED_AUDIO"
+
+
+def test_non_mono_channels_fail_contract_and_keep_socket(client_factory) -> None:
+    client: TestClient = client_factory()
+    session_id = create_session(client)
+    with client.websocket_connect(f"/sessions/{session_id}/audio", headers=TEST_HEADERS) as ws:
+        ws.send_json(audio_chunk(0, channels=2))
+        error = ws.receive_json()
+        assert error["type"] == "error"
+        assert error["code"] == "VALIDATION_FAILED"
+        ws.send_json(audio_chunk(1))
+        ws.send_json({"type": "audio.end", "seq": 2})
+        frames = collect_until_terminal(ws)
+    assert any(frame["type"] == "transcript.final" for frame in frames)
 
 
 def test_websocket_rejects_bad_token(client_factory) -> None:

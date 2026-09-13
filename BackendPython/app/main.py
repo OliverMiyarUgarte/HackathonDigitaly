@@ -46,11 +46,11 @@ async def _idle_sweeper(app: FastAPI) -> None:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or Settings.from_env()
-    providers = build_providers(resolved)
     logging.basicConfig(
         level=resolved.log_level.upper(),
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
+    providers = build_providers(resolved)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

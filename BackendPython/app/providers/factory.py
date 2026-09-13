@@ -52,5 +52,12 @@ def _build_transcriber(settings: Settings) -> Transcriber:
             compute_type=settings.whisper_compute_type,
         )
     except TranscriptionError:
-        logger.warning("Whisper unavailable; falling back to FakeTranscriber")
+        if settings.ai_provider == "local":
+            logger.warning(
+                "AI_PROVIDER=local but no Whisper backend is installed; "
+                "using FakeTranscriber (health reports fake+rule). "
+                "Install faster-whisper with 'pip install -r requirements-whisper.txt'."
+            )
+        else:
+            logger.warning("Whisper unavailable; falling back to FakeTranscriber")
         return FakeTranscriber()

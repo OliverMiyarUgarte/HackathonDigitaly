@@ -34,7 +34,7 @@ class AiAudioChunkFrame(StrictModel):
     data: str
     encoding: Literal["pcm_s16le"]
     sampleRate: int
-    channels: int
+    channels: Literal[1]
 
 
 class AiAudioEndFrame(StrictModel):
