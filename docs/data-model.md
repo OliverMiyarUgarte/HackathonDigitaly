@@ -4,7 +4,8 @@ Source of truth: `Backend/prisma/schema.prisma`. All schema changes go through
 `Backend/prisma/migrations/`. Databases are provisioned with
 `npx prisma migrate deploy` from `Backend/`.
 
-- Migration history: `20260912161334_init`, `20260912201425_add_healthcare_query_indexes`.
+- Migration history: `20260912161334_init`, `20260912201425_add_healthcare_query_indexes`,
+  `20260913174950_add_consultation_summaries`.
 - Reference snapshot (read-only, generated from a freshly migrated database):
   `docs/schema.reference.sql`. Regenerate with
   `pg_dump --schema-only --no-owner --no-privileges <db>`; never edit by hand.
@@ -103,7 +104,11 @@ medical record per consultation; an appointment can have many validation codes
 
 - Purpose: one live/ended teleconsultation per appointment (room lifecycle).
 - Key fields: `appointment_id` (UNIQUE), `status` (`active` | `ended`),
-  `started_at`, `ended_at`, timestamps.
+  `started_at`, `ended_at`, `doctor_summary`, `patient_summary`,
+  `summary_generated_at`, timestamps.
+- `doctor_summary`/`patient_summary` persist the AI whole-call summary (clinical
+  vs. patient-friendly wording) and `summary_generated_at` records when it was
+  produced; all nullable until `summary.ready` is stored.
 - Indexes: PK `id`; UNIQUE `(appointment_id)`; `status`;
   `(started_at DESC)` for history by date.
 - Delete rules: `ON DELETE CASCADE` from `appointments`.
@@ -163,6 +168,7 @@ medical record per consultation; an appointment can have many validation codes
 | `validation_codes.code_hash` | secret | HMAC-SHA256; plaintext code never stored |
 | `appointments.scheduled_at` | health-adjacent | access restricted by patient/doctor |
 | `consultations.started_at/ended_at` | health metadata | participant-only access |
+| `consultations.doctor_summary/patient_summary` | sensitive health data (AI-generated) | participant-only; `summary_generated_at` keeps provenance |
 | `medical_records.notes/diagnosis/prescriptions` | sensitive health data | participant-only; reads audited |
 | `pre_consult_answers.answer` | sensitive health data | participant-only |
 | `attachments.file_name/content_type/storage_key` | possibly health data | access via appointment ACL; reads audited |
@@ -234,6 +240,16 @@ CREATE INDEX "validation_codes_appointment_id_expires_at_idx"
   ON "validation_codes"("appointment_id", "expires_at");
 DROP INDEX "users_role_deleted_at_idx";
 DROP INDEX "consultations_started_at_idx";
+```
+
+`20260913174950_add_consultation_summaries` is additive and reversible by
+dropping the three columns:
+
+```sql
+ALTER TABLE "consultations"
+  DROP COLUMN "doctor_summary",
+  DROP COLUMN "patient_summary",
+  DROP COLUMN "summary_generated_at";
 ```
 
 ## Deliberately unchanged
