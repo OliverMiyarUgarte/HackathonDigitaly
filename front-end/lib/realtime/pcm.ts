@@ -2,6 +2,43 @@ export const PCM_SAMPLE_RATE = 16000 as const;
 export const PCM_BATCH_SAMPLES = 4000;
 export const PCM_ENCODING = "pcm_s16le" as const;
 
+export class StreamingResampler {
+  private readonly ratio: number;
+  private position = 0;
+  private pending = new Float32Array(0);
+
+  constructor(inputRate: number, targetRate: number = PCM_SAMPLE_RATE) {
+    this.ratio = inputRate > 0 ? inputRate / targetRate : 1;
+  }
+
+  push(samples: Float32Array): Float32Array {
+    if (this.ratio === 1) {
+      return samples.slice();
+    }
+    const combined = new Float32Array(this.pending.length + samples.length);
+    combined.set(this.pending, 0);
+    combined.set(samples, this.pending.length);
+    this.pending = combined;
+
+    const output: number[] = [];
+    while (this.position + 1 < this.pending.length) {
+      const index = Math.floor(this.position);
+      const fraction = this.position - index;
+      const start = this.pending[index];
+      const end = this.pending[index + 1];
+      output.push(start + (end - start) * fraction);
+      this.position += this.ratio;
+    }
+
+    const consumed = Math.floor(this.position);
+    if (consumed > 0) {
+      this.pending = this.pending.slice(consumed);
+      this.position -= consumed;
+    }
+    return Float32Array.from(output);
+  }
+}
+
 export interface AudioChunkPayload {
   consultationId: string;
   seq: number;

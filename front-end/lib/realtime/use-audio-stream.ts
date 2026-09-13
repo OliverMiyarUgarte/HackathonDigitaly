@@ -6,7 +6,7 @@ import {
   computeRmsLevel,
   PcmFrameBatcher,
   PCM_BATCH_SAMPLES,
-  PCM_SAMPLE_RATE,
+  StreamingResampler,
 } from "./pcm";
 import { useRealtime } from "./socket-context";
 
@@ -122,14 +122,7 @@ export function useAudioStream({
     }
 
     try {
-      const context = new AudioContext({ sampleRate: PCM_SAMPLE_RATE });
-      if (context.sampleRate !== PCM_SAMPLE_RATE) {
-        await context.close();
-        setError(
-          `O áudio do dispositivo está em ${context.sampleRate} Hz e o copiloto exige 16000 Hz. Desative o copiloto ou use um navegador compatível.`,
-        );
-        return;
-      }
+      const context = new AudioContext();
       if (!context.audioWorklet) {
         await context.close();
         setError("Captura de áudio em tempo real indisponível neste navegador.");
@@ -144,6 +137,7 @@ export function useAudioStream({
       });
 
       const batch = new PcmFrameBatcher(PCM_BATCH_SAMPLES);
+      const resampler = new StreamingResampler(context.sampleRate);
       batcherRef.current = batch;
       lastLevelAtRef.current = 0;
 
@@ -160,14 +154,18 @@ export function useAudioStream({
         if (!(data instanceof Float32Array) || data.length === 0) {
           return;
         }
+        const resampled = resampler.push(data);
+        if (resampled.length === 0) {
+          return;
+        }
         const now = performance.now();
         if (now - lastLevelAtRef.current >= LEVEL_INTERVAL_MS) {
           lastLevelAtRef.current = now;
           if (activeRef.current) {
-            setLevel(computeRmsLevel(data));
+            setLevel(computeRmsLevel(resampled));
           }
         }
-        for (const frame of batch.push(data)) {
+        for (const frame of batch.push(resampled)) {
           emitChunk(frame);
         }
       };
@@ -188,7 +186,9 @@ export function useAudioStream({
       streamingRef.current = false;
       if (activeRef.current) {
         setError(
-          "Não foi possível iniciar a captura de áudio do copiloto. Verifique o microfone e tente novamente.",
+          `Não foi possível iniciar a captura de áudio do copiloto. Verifique o microfone e tente novamente.${
+            caught instanceof Error ? ` (${caught.name})` : ""
+          }`,
         );
       }
     }

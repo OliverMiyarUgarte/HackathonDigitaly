@@ -5,6 +5,7 @@ import {
   floatTo16BitPCM,
   int16ToBase64,
   PcmFrameBatcher,
+  StreamingResampler,
 } from "../lib/realtime/pcm";
 import { readTokens, storageStatePath } from "./auth";
 
@@ -41,6 +42,24 @@ test.describe("codificador PCM s16le", () => {
 
     expect(computeRmsLevel(new Float32Array([0, 0]))).toBe(0);
     expect(computeRmsLevel(new Float32Array([1, 1]))).toBeCloseTo(1, 5);
+  });
+
+  test("reamostra a taxa do dispositivo para 16 kHz", () => {
+    const from48 = new StreamingResampler(48000).push(
+      new Float32Array(4800).fill(1),
+    );
+    expect(from48).toHaveLength(1600);
+    expect(from48.every((value) => Math.abs(value - 1) < 1e-6)).toBe(true);
+
+    const from96 = new StreamingResampler(96000).push(
+      new Float32Array(960).fill(1),
+    );
+    expect(from96).toHaveLength(160);
+
+    const native = new StreamingResampler(16000).push(
+      new Float32Array([0, 0.5, -0.5]),
+    );
+    expect(Array.from(native)).toEqual([0, 0.5, -0.5]);
   });
 });
 
