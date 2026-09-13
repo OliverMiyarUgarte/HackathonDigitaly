@@ -134,6 +134,7 @@ export function useConsultationRoom({
   const iceServersRef = useRef<IceServerDto[]>([]);
   const remoteParticipantsRef = useRef<Map<string, RoomParticipant>>(new Map());
   const makingOfferRef = useRef(false);
+  const negotiationQueuedRef = useRef(false);
   const ignoreOfferRef = useRef(false);
   const startedRef = useRef(false);
   const micRef = useRef(true);
@@ -163,6 +164,7 @@ export function useConsultationRoom({
 
     const negotiate = async (pc: RTCPeerConnection): Promise<void> => {
       if (makingOfferRef.current) {
+        negotiationQueuedRef.current = true;
         return;
       }
       makingOfferRef.current = true;
@@ -180,6 +182,10 @@ export function useConsultationRoom({
         setError("Não foi possível negociar a conexão de vídeo. Tente novamente.");
       } finally {
         makingOfferRef.current = false;
+        if (negotiationQueuedRef.current && pc.signalingState !== "closed") {
+          negotiationQueuedRef.current = false;
+          void negotiate(pc);
+        }
       }
     };
 
@@ -230,7 +236,9 @@ export function useConsultationRoom({
       };
 
       pc.onnegotiationneeded = () => {
-        void negotiate(pc);
+        if (role === "doctor") {
+          void negotiate(pc);
+        }
       };
 
       pcRef.current = pc;
@@ -271,17 +279,15 @@ export function useConsultationRoom({
       syncParticipants();
 
       const stream = localStreamRef.current;
-      if (!stream) {
-        return;
-      }
-
-      const pc = ensurePeerConnection(payload.iceServers);
-      for (const track of stream.getTracks()) {
-        const alreadyAdded = pc
-          .getSenders()
-          .some((sender) => sender.track?.id === track.id);
-        if (!alreadyAdded) {
-          pc.addTrack(track, stream);
+      if (stream && role === "doctor") {
+        const pc = ensurePeerConnection(payload.iceServers);
+        for (const track of stream.getTracks()) {
+          const alreadyAdded = pc
+            .getSenders()
+            .some((sender) => sender.track?.id === track.id);
+          if (!alreadyAdded) {
+            pc.addTrack(track, stream);
+          }
         }
       }
 
@@ -317,9 +323,12 @@ export function useConsultationRoom({
           return;
         }
         pc = ensurePeerConnection(iceServersRef.current);
-        for (const track of stream.getTracks()) {
+      }
+      const localStream = localStreamRef.current;
+      if (localStream) {
+        for (const track of localStream.getTracks()) {
           if (!pc.getSenders().some((sender) => sender.track?.id === track.id)) {
-            pc.addTrack(track, stream);
+            pc.addTrack(track, localStream);
           }
         }
       }
@@ -436,9 +445,20 @@ export function useConsultationRoom({
         camera: cameraRef.current,
       });
 
-      const pc = pcRef.current;
-      if (role === "doctor" && pc) {
-        void negotiate(pc);
+      if (role === "doctor") {
+        const stream = localStreamRef.current;
+        if (!stream) {
+          return;
+        }
+        const connection = ensurePeerConnection(iceServersRef.current);
+        for (const track of stream.getTracks()) {
+          if (
+            !connection.getSenders().some((sender) => sender.track?.id === track.id)
+          ) {
+            connection.addTrack(track, stream);
+          }
+        }
+        void negotiate(connection);
       }
     };
 
